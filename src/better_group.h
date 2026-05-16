@@ -39,7 +39,13 @@ public:
 
 private:
     bool    enabled = false;
+    bool    creatureScalingEnabled = false;
+    bool    groupXPCompensationEnabled = false;
+    bool    disableXPCompensationInRaid = true;
+    bool    compensateGrayPenalty = false;
     float   detectionRadius = 100.0f;
+    float   compensationPct = 1.0f;
+    float   maxXPCompensationRate = 1.0f;
     uint32  maxGroupSize = 5;
     bool    damageScalingEnabled = true;
     float   hpScale[6] = { 0.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f };

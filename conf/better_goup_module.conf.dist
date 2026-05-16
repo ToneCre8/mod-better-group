@@ -129,6 +129,9 @@ GroupXPCompensation.CompensationPct = 1.0
 #       Description: Hard cap on the per-player XP rate after compensation.
 #       Prevents accidental over-rewarding in small groups or edge cases.
 #       1.0 = members can receive at most solo-equivalent XP per kill.
+#       When CompensateGrayPenalty is enabled, the module may temporarily use
+#       up to 2x this value before KillRewarder applies its later /2 gray
+#       penalty, so the final awarded rate still respects this cap.
 #       Raise this (e.g. 1.5) only if you want to allow above-solo rewards.
 #
 #       Default:     1.0

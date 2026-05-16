@@ -28,7 +28,7 @@ public:
     ChatCommandTable GetCommands() const override
     {
         static ChatCommandTable bettergroupCommandTable = {
-           { "better", HandleBetterGroupCommand, SEC_PLAYER, Console::No },
+           { "better", HandleBetterGroupCommand, SEC_GAMEMASTER, Console::No },
         };
 
         static ChatCommandTable commandTable = {
@@ -40,7 +40,7 @@ public:
 
     static bool HandleBetterGroupCommand(ChatHandler* handler, char const* args)
     {
-        return BetterGroup::HandleBuddyMgrCommand(handler, args);
+        return BetterGroup::HandleBetterGroupCommand(handler, args);
     }
 
 };

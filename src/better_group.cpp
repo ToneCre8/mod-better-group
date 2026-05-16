@@ -3,20 +3,15 @@
 #include "better_group.h"
 #include "Chat.h"
 #include "Config.h"
-#include "DatabaseEnv.h"
-#include "ItemTemplate.h"
-#include "LootMgr.h"
-#include "ObjectMgr.h"
-#include "Pet.h"
-#include <cctype>
-#include <cmath>
-#include <iostream>
-#include <string>
-#include <algorithm>
-#include <vector>
+#include "Formulas.h"
 #include "Group.h"
 #include "KillRewarder.h"
-#include "Formulas.h"
+
+#include <algorithm>
+#include <cctype>
+#include <sstream>
+#include <string>
+#include <unordered_map>
 
 //=================================================================================================================================================================================
 //=================================================================================================================================================================================
@@ -26,6 +21,8 @@
 struct CreatureScalingState
 {
     uint32 originalMaxHealth;   // Stored before scaling; restored on evade/death.
+    uint32 nearbyGroupSize;     // Number of nearby group members counted at combat start.
+    float  healthMultiplier;    // Applied once at combat start.
     float  damageMultiplier;    // Applied each hit via damage hooks.
 };
 
@@ -56,6 +53,32 @@ static bool ShouldSkipCreature(Creature const* creature)
         return true;
 
     return false;
+}
+
+static char const* GetCreatureSkipReason(Creature const* creature)
+{
+    if (creature->isElite())
+        return "elite, rare-elite, or world-boss rank";
+
+    if (creature->IsPet())
+        return "pet";
+
+    if (creature->IsTotem())
+        return "totem";
+
+    if (creature->IsSummon())
+        return "summon";
+
+    if (creature->IsCritter())
+        return "critter";
+
+    if (creature->IsGuard())
+        return "guard";
+
+    if (creature->IsTrigger())
+        return "trigger";
+
+    return nullptr;
 }
 
 // Extracts the controlling Player from any kind of aggro-initiating unit.
@@ -100,9 +123,9 @@ static uint32 CountNearbyGroupMembers(Creature const* creature, Player* attacker
 }
 
 // Returns true when the group's XP for this kill would be halved due to
-  // gray-level mismatch (_isFullXP == false in KillRewarder).
-  // Replicates the _InitGroupData() logic from KillRewarder.cpp so we can
-  // detect this outside the class.
+// gray-level mismatch (_isFullXP == false in KillRewarder).
+// Replicates the _InitGroupData() logic from KillRewarder.cpp so we can
+// detect this outside the class.
 static bool GroupHasGrayMismatch(Group* group, KillRewarder* rewarder)
 {
     Unit* victim = rewarder->GetVictim();
@@ -160,7 +183,7 @@ void BetterGroup::OnPlayerRewardKillRewarder(Player* player, KillRewarder* rewar
     if (!enabled)
         return;
 
-    if (!sConfigMgr->GetOption<bool>("GroupXPCompensation.Enable", false))
+    if (!groupXPCompensationEnabled)
         return;
 
     Group* group = player->GetGroup();
@@ -168,11 +191,8 @@ void BetterGroup::OnPlayerRewardKillRewarder(Player* player, KillRewarder* rewar
         return; // Solo — rate is already 1.0, nothing to compensate.
 
     // Optionally skip compensation entirely for raid groups.
-    if (group->isRaidGroup() && sConfigMgr->GetOption<bool>("GroupXPCompensation.DisableInRaid", true))
+    if (group->isRaidGroup() && disableXPCompensationInRaid)
         return;
-
-    // Safety cap applied after all adjustments.
-    float maxRate = sConfigMgr->GetOption<float>("GroupXPCompensation.MaxRate", 1.0f);
 
     // ---------------------------------------------------------------
     // Primary compensation: slide rate toward 1.0 (solo equivalent).
@@ -182,11 +202,11 @@ void BetterGroup::OnPlayerRewardKillRewarder(Player* player, KillRewarder* rewar
     // CompensationPct = 1.0 -> each member receives solo-equivalent XP
     // CompensationPct = 0.5 -> halfway between group penalty and solo
     // ---------------------------------------------------------------
-    float compensationPct = sConfigMgr->GetOption<float>("GroupXPCompensation.CompensationPct", 1.0f);
-    compensationPct = std::clamp(compensationPct, 0.0f, 1.0f);
-
     if (rate < 1.0f)
         rate = rate + (1.0f - rate) * compensationPct;
+
+    // Cap the ordinary compensation before any optional gray-penalty offset.
+    rate = std::min(rate, maxXPCompensationRate);
 
     // ---------------------------------------------------------------
     // Optional: compensate for the gray-level half-XP penalty.
@@ -198,21 +218,28 @@ void BetterGroup::OnPlayerRewardKillRewarder(Player* player, KillRewarder* rewar
     // Only useful if you also want to remove the gray mismatch penalty.
     // Leave disabled (default) for more conservative behaviour.
     // ---------------------------------------------------------------
-    if (sConfigMgr->GetOption<bool>("GroupXPCompensation.CompensateGrayPenalty", false))
+    if (compensateGrayPenalty)
     {
         if (GroupHasGrayMismatch(group, rewarder))
-            rate *= 2.0f;
+        {
+            // KillRewarder halves this later. Allow up to 2x the configured
+            // final cap here so the post-halving reward can still reach it.
+            rate = std::min(rate * 2.0f, maxXPCompensationRate * 2.0f);
+        }
     }
-
-    // Apply safety cap last.
-    rate = std::min(rate, maxRate);
 }
 
 void BetterGroup::OnAfterConfigLoad(bool reload)
 {
     enabled = sConfigMgr->GetOption<bool>("BetterGroup.Enable", false);
+    creatureScalingEnabled = sConfigMgr->GetOption<bool>("DynamicCreatureScaling.Enable", false);
+    groupXPCompensationEnabled = sConfigMgr->GetOption<bool>("GroupXPCompensation.Enable", false);
+    disableXPCompensationInRaid = sConfigMgr->GetOption<bool>("GroupXPCompensation.DisableInRaid", true);
+    compensateGrayPenalty = sConfigMgr->GetOption<bool>("GroupXPCompensation.CompensateGrayPenalty", false);
     detectionRadius = sConfigMgr->GetOption<float>("DynamicCreatureScaling.DetectionRadius", 100.0f);
     damageScalingEnabled = sConfigMgr->GetOption<bool>("DynamicCreatureScaling.ScaleDamage", true);
+    compensationPct = std::clamp(sConfigMgr->GetOption<float>("GroupXPCompensation.CompensationPct", 1.0f), 0.0f, 1.0f);
+    maxXPCompensationRate = std::max(sConfigMgr->GetOption<float>("GroupXPCompensation.MaxRate", 1.0f), 0.0f);
 
     constexpr uint32 kHardCap = 5;
     maxGroupSize = std::min(sConfigMgr->GetOption<uint32>("DynamicCreatureScaling.MaxGroupSize", 5), kHardCap);
@@ -229,9 +256,6 @@ void BetterGroup::OnAfterConfigLoad(bool reload)
 
 void BetterGroup::OnUnitDeath(Unit* unit, Unit* killer)
 {
-    if (!enabled)
-        return;
-
     if (Creature* creature = unit->ToCreature())
         _scaledCreatures.erase(creature->GetGUID());
 }
@@ -271,7 +295,7 @@ void BetterGroup::OnUnitEnterCombat(Unit* unit, Unit* victim)
     if (!enabled)
         return;
 
-    if (!sConfigMgr->GetOption<bool>("DynamicCreatureScaling.Enable", false))
+    if (!creatureScalingEnabled)
         return;
 
     Creature* creature = unit->ToCreature();
@@ -305,7 +329,7 @@ void BetterGroup::OnUnitEnterCombat(Unit* unit, Unit* victim)
 
     uint32 originalMaxHp = creature->GetMaxHealth();
 
-    _scaledCreatures[creature->GetGUID()] = { originalMaxHp, dmgMult };
+    _scaledCreatures[creature->GetGUID()] = { originalMaxHp, groupSize, hpMult, dmgMult };
 
     if (hpMult > 1.0f)
     {
@@ -316,12 +340,6 @@ void BetterGroup::OnUnitEnterCombat(Unit* unit, Unit* victim)
 
 void BetterGroup::OnUnitEnterEvadeMode(Unit* unit, uint8 evadeReason)
 {
-    if (!enabled)
-        return;
-
-    if (!sConfigMgr->GetOption<bool>("DynamicCreatureScaling.Enable", false))
-        return;
-
     Creature* creature = unit->ToCreature();
     if (!creature)
         return;
@@ -338,10 +356,7 @@ void BetterGroup::OnUnitEnterEvadeMode(Unit* unit, uint8 evadeReason)
 
 void BetterGroup::ModifyMeleeDamage(Unit* target, Unit* attacker, uint32& damage)
 {
-    if (!enabled || !attacker)
-        return;
-
-    if (!sConfigMgr->GetOption<bool>("DynamicCreatureScaling.Enable", false))
+    if (!enabled || !creatureScalingEnabled || !attacker)
         return;
 
     auto it = _scaledCreatures.find(attacker->GetGUID());
@@ -353,10 +368,7 @@ void BetterGroup::ModifyMeleeDamage(Unit* target, Unit* attacker, uint32& damage
 
 void BetterGroup::ModifySpellDamageTaken(Unit* target, Unit* attacker, int32& damage, SpellInfo const* spellInfo)
 {
-    if (!enabled || !attacker || damage <= 0)
-        return;
-
-    if (!sConfigMgr->GetOption<bool>("DynamicCreatureScaling.Enable", false))
+    if (!enabled || !creatureScalingEnabled || !attacker || damage <= 0)
         return;
 
     auto it = _scaledCreatures.find(attacker->GetGUID());
@@ -368,10 +380,7 @@ void BetterGroup::ModifySpellDamageTaken(Unit* target, Unit* attacker, int32& da
 
 void BetterGroup::ModifyPeriodicDamageAurasTick(Unit* target, Unit* attacker, uint32& damage, SpellInfo const* spellInfo)
 {
-    if (!enabled || !attacker)
-        return;
-
-    if (!sConfigMgr->GetOption<bool>("DynamicCreatureScaling.Enable", false))
+    if (!enabled || !creatureScalingEnabled || !attacker)
         return;
 
     auto it = _scaledCreatures.find(attacker->GetGUID());
@@ -391,15 +400,87 @@ bool BetterGroup::HandleBetterGroupCommand(ChatHandler* handler, char const* arg
     std::transform(command.begin(), command.end(), command.begin(), ::tolower);
     std::transform(qualifier.begin(), qualifier.end(), qualifier.begin(), ::tolower);
 
-    if (command.empty())
+    if (command.empty() || command == "help")
     {
-        handler->PSendSysMessage("Usage: .better group not-implemented");
+        handler->PSendSysMessage("BetterGroup commands:");
+        handler->PSendSysMessage("  .group better status  - show current module settings");
+        handler->PSendSysMessage("  .group better scales  - show configured scaling table");
+        handler->PSendSysMessage("  .group better target  - inspect the selected creature");
         return true;
     }
 
-   
+    if (command == "status")
+    {
+        handler->PSendSysMessage("BetterGroup status:");
+        handler->PSendSysMessage("  Master enabled: {}", sConfigMgr->GetOption<bool>("BetterGroup.Enable", false));
+        handler->PSendSysMessage("  Creature scaling enabled: {}", sConfigMgr->GetOption<bool>("DynamicCreatureScaling.Enable", false));
+        handler->PSendSysMessage("  Detection radius: {:.1f}", sConfigMgr->GetOption<float>("DynamicCreatureScaling.DetectionRadius", 100.0f));
+        handler->PSendSysMessage("  Max group size: {}", std::min(sConfigMgr->GetOption<uint32>("DynamicCreatureScaling.MaxGroupSize", 5), 5u));
+        handler->PSendSysMessage("  Damage scaling enabled: {}", sConfigMgr->GetOption<bool>("DynamicCreatureScaling.ScaleDamage", true));
+        handler->PSendSysMessage("  Group XP compensation enabled: {}", sConfigMgr->GetOption<bool>("GroupXPCompensation.Enable", false));
+        handler->PSendSysMessage("  XP compensation percent: {:.2f}", std::clamp(sConfigMgr->GetOption<float>("GroupXPCompensation.CompensationPct", 1.0f), 0.0f, 1.0f));
+        handler->PSendSysMessage("  XP max rate: {:.2f}", std::max(sConfigMgr->GetOption<float>("GroupXPCompensation.MaxRate", 1.0f), 0.0f));
+        handler->PSendSysMessage("  XP disabled in raids: {}", sConfigMgr->GetOption<bool>("GroupXPCompensation.DisableInRaid", true));
+        handler->PSendSysMessage("  Gray penalty compensation: {}", sConfigMgr->GetOption<bool>("GroupXPCompensation.CompensateGrayPenalty", false));
+        handler->PSendSysMessage("  Creatures currently tracked as scaled: {}", _scaledCreatures.size());
+        return true;
+    }
 
-    handler->PSendSysMessage("Unknown bettergroup command: %s", command.c_str());
+    if (command == "scales")
+    {
+        handler->PSendSysMessage("BetterGroup scaling table:");
+        handler->PSendSysMessage("  Players | HP x | Damage x");
+        for (uint32 i = 1; i <= 5; ++i)
+        {
+            handler->PSendSysMessage("  {:>7} | {:.2f} | {:.2f}",
+                i,
+                sConfigMgr->GetOption<float>(std::string("DynamicCreatureScaling.HPScale.") + std::to_string(i), 1.0f),
+                sConfigMgr->GetOption<float>(std::string("DynamicCreatureScaling.DmgScale.") + std::to_string(i), 1.0f));
+        }
+        return true;
+    }
+
+    if (command == "target")
+    {
+        Creature* creature = handler->getSelectedCreature();
+        if (!creature)
+        {
+            handler->SendErrorMessage("Select a creature first.");
+            return true;
+        }
+
+        handler->PSendSysMessage("BetterGroup target inspection:");
+        handler->PSendSysMessage("  Name: {}", creature->GetName());
+        handler->PSendSysMessage("  Entry: {}", creature->GetEntry());
+        handler->PSendSysMessage("  GUID: {}", creature->GetGUID().ToString());
+        handler->PSendSysMessage("  Map is instanceable: {}", creature->GetMap()->Instanceable());
+
+        if (char const* reason = GetCreatureSkipReason(creature))
+            handler->PSendSysMessage("  Scaling eligibility: no ({})", reason);
+        else if (creature->GetMap()->Instanceable())
+            handler->PSendSysMessage("  Scaling eligibility: no (instanced content)");
+        else
+            handler->PSendSysMessage("  Scaling eligibility: yes");
+
+        auto it = _scaledCreatures.find(creature->GetGUID());
+        if (it == _scaledCreatures.end())
+        {
+            handler->PSendSysMessage("  Currently tracked as scaled: no");
+            handler->PSendSysMessage("  Current HP: {}/{}", creature->GetHealth(), creature->GetMaxHealth());
+            return true;
+        }
+
+        CreatureScalingState const& state = it->second;
+        handler->PSendSysMessage("  Currently tracked as scaled: yes");
+        handler->PSendSysMessage("  Nearby group members counted: {}", state.nearbyGroupSize);
+        handler->PSendSysMessage("  HP multiplier: {:.2f}", state.healthMultiplier);
+        handler->PSendSysMessage("  Damage multiplier: {:.2f}", state.damageMultiplier);
+        handler->PSendSysMessage("  Original max HP: {}", state.originalMaxHealth);
+        handler->PSendSysMessage("  Current HP: {}/{}", creature->GetHealth(), creature->GetMaxHealth());
+        return true;
+    }
+
+    handler->PSendSysMessage("Unknown BetterGroup command: {}", command);
     return true;
 }
 //============================================================================================

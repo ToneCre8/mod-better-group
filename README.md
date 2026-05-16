@@ -103,10 +103,19 @@ All values can be tuned in the module config file.
 - Groups larger than the configured maximum are treated as that maximum for scaling lookup.
 - On evade, scaled creatures are restored to their original maximum health while preserving their current health percentage.
 - With `CompensationPct = 1.0`, total XP awarded across a party can be much higher than a solo kill because each eligible member can receive solo-equivalent XP. Lower the value if you want softer progression.
+- When `CompensateGrayPenalty = 1`, the module may temporarily raise the internal pre-penalty XP rate above `MaxRate` so the final post-penalty reward can still respect that configured cap.
 
 ## Commands
 
-The module includes the beginning of a command script, but there are no documented user-facing commands yet.
+The module exposes GM-only inspection commands:
+
+| Command | Purpose |
+| --- | --- |
+| `.group better status` | Show the current module configuration and number of actively tracked scaled creatures |
+| `.group better scales` | Show the configured HP and damage multipliers for group sizes 1-5 |
+| `.group better target` | Inspect the selected creature's scaling eligibility and live scaling state |
+
+Use `.group better` or `.group better help` to print the command list in-game.
 
 ## License
 
