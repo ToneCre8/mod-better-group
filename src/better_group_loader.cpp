@@ -19,7 +19,7 @@
 void AddBetterGroupScripts();
 
 // Add all
-void Addmod_bettergroupScripts()
+void Addmod_better_groupScripts()
 {
     AddBetterGroupScripts();
 }
