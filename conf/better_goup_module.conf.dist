@@ -1,0 +1,155 @@
+########################################
+# Dynamic Creature Scaling Module
+########################################
+#
+# Scales non-elite creature HP and outgoing damage when they enter combat,
+# based on the number of party members nearby. Scaling is locked at combat
+# start and fully reversed when the creature evades or is killed.
+#
+# Creatures that are NEVER scaled:
+#   - Elite, rare-elite, or world-boss rank mobs
+#   - Critters
+#   - Pets, hunter pets, totems, summons
+#   - Guards and civilian NPCs
+#   - Trigger/invisible NPCs
+#
+########################################
+
+#   DynamicCreatureScaling.Enable
+#       Description: Master on/off switch for this module.
+#       Default:     0 - Disabled
+#                    1 - Enabled
+#
+DynamicCreatureScaling.Enable = 1
+
+#   DynamicCreatureScaling.DetectionRadius
+#       Description: Radius (yards) around the creature used to count how many
+#       group members are nearby at the moment combat is triggered.
+#       Members outside this radius are NOT counted, so a straggler far away
+#       won't push a 3-man party into 4-man scaling.
+#       Default:     100.0
+#
+DynamicCreatureScaling.DetectionRadius = 100.0
+
+#   DynamicCreatureScaling.MaxGroupSize
+#       Description: Maximum group size considered for scaling (hard-capped at 5).
+#       Groups larger than this value (e.g. 6+ from bot parties) are treated as
+#       MaxGroupSize for the purpose of scale table lookup.
+#       Default:     5
+#
+DynamicCreatureScaling.MaxGroupSize = 5
+
+#   DynamicCreatureScaling.ScaleDamage
+#       Description: Also scale creature outgoing damage (melee, spell, DoTs).
+#       Disable if you only want HP scaling without a damage increase.
+#       Default:     1 - Enabled
+#                    0 - HP scaling only
+#
+DynamicCreatureScaling.ScaleDamage = 1
+
+########################################
+# HP Scaling Table
+#
+#   DynamicCreatureScaling.HPScale.<N>
+#       Description: HP multiplier when exactly N players are detected nearby.
+#       1.0 = no change. 2.0 = twice the normal HP.
+#
+#   Tuning guide:
+#     The vanilla solo kill is 1.0x. Each additional player should make the mob
+#     meaningfully tougher without doubling time-to-kill. The default values
+#     roughly follow:  scale ≈ 0.7 * groupSize + 0.3
+#
+########################################
+
+DynamicCreatureScaling.HPScale.1 = 1.0
+DynamicCreatureScaling.HPScale.2 = 1.5
+DynamicCreatureScaling.HPScale.3 = 2.0
+DynamicCreatureScaling.HPScale.4 = 2.6
+DynamicCreatureScaling.HPScale.5 = 3.2
+
+########################################
+# Damage Scaling Table
+#
+#   DynamicCreatureScaling.DmgScale.<N>
+#       Description: Outgoing damage multiplier (melee + spell + DoT) when N
+#       players are detected. 1.0 = no change.
+#
+#   Tuning guide:
+#     Keep damage scaling noticeably lower than HP scaling so that groups with
+#     healers don't feel penalised. The defaults add roughly +15-16% per extra
+#     player, keeping damage manageable even at 5-man.
+#
+########################################
+
+DynamicCreatureScaling.DmgScale.1 = 1.00
+DynamicCreatureScaling.DmgScale.2 = 1.20
+DynamicCreatureScaling.DmgScale.3 = 1.35
+DynamicCreatureScaling.DmgScale.4 = 1.50
+DynamicCreatureScaling.DmgScale.5 = 1.65
+
+########################################
+# Group XP Compensation 
+########################################
+
+#   GroupXPCompensation.Enable
+#       Description: Enable the group XP compensation module.
+#       Default:     0 - Disabled
+#                    1 - Enabled
+#
+GroupXPCompensation.Enable = 1
+
+#   GroupXPCompensation.CompensationPct
+#       Description: How much of the group XP penalty to cancel out.
+#       The formula is:  newRate = currentRate + (1.0 - currentRate) * CompensationPct
+#
+#         0.0  = no compensation; vanilla group penalty applies in full
+#         0.5  = halfway between the group penalty rate and full solo rate
+#         1.0  = each member earns exactly what they would earn solo per kill
+#
+#       Example: 5 equal-level players, vanilla rate = 0.28 (28% of solo XP).
+#         CompensationPct = 1.0  -> rate = 1.00 (100% of solo XP per member)
+#         CompensationPct = 0.5  -> rate = 0.64 (64% of solo XP per member)
+#
+#       Note: Because each member now earns close to solo XP, total XP awarded
+#             across a 5-man party is roughly 5x a solo kill. This is intentional —
+#             lower CompensationPct if you prefer a softer bonus.
+#
+#       Default:     1.0
+#       Range:       0.0 - 1.0
+#
+GroupXPCompensation.CompensationPct = 1.0
+
+#   GroupXPCompensation.MaxRate
+#       Description: Hard cap on the per-player XP rate after compensation.
+#       Prevents accidental over-rewarding in small groups or edge cases.
+#       1.0 = members can receive at most solo-equivalent XP per kill.
+#       Raise this (e.g. 1.5) only if you want to allow above-solo rewards.
+#
+#       Default:     1.0
+#
+GroupXPCompensation.MaxRate = 1.0
+
+#   GroupXPCompensation.DisableInRaid
+#       Description: Do not apply compensation when the player is in a raid group.
+#       Raids already use a flat groupRate of 1.0 internally, but per-member
+#       rates are still diluted by the large member count. Keeping this enabled
+#       (1) is the safest choice for raid balance.
+#
+#       Default:     1 - Disabled in raids (recommended)
+#                    0 - Apply compensation in raids too
+#
+GroupXPCompensation.DisableInRaid = 1
+
+#   GroupXPCompensation.CompensateGrayPenalty
+#       Description: Also compensate for the half-XP penalty applied when some
+#       group members see the victim as a gray-level mob (_isFullXP = false).
+#       When enabled the module doubles the rate for affected players to
+#       offset KillRewarder's internal /2 reduction.
+#
+#       Enable this only if you want to fully remove all group XP reductions.
+#       Leave disabled for a more conservative and balanced experience.
+#
+#       Default:     0 - Disabled (gray penalty still applies)
+#                    1 - Enabled (gray penalty is cancelled out)
+#
+GroupXPCompensation.CompensateGrayPenalty = 0

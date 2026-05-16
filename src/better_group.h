@@ -1,0 +1,50 @@
+#pragma once
+#include "Player.h"
+#include "PlayerScript.h"
+#include "WorldScript.h"
+#include "ServerScript.h"
+#include "UnitScript.h"
+#include "AllSpellScript.h"
+
+
+class BetterGroup :
+    public PlayerScript,
+    public UnitScript,
+    public WorldScript
+{
+public:
+    BetterGroup();
+    ~BetterGroup();
+
+    //PlayerScript
+    void OnPlayerRewardKillRewarder(Player* player, KillRewarder* rewarder, bool isDungeon, float& rate) override;
+
+    //WorldScript
+    void OnAfterConfigLoad(bool reload) override;
+
+    //UnitScript
+    void OnUnitDeath(Unit* unit, Unit* /*killer*/) override;
+    void OnUnitEnterCombat(Unit* unit, Unit* victim) override;
+    // ── Evade: undo scaling so the creature resets to normal HP ───────────────
+    void OnUnitEnterEvadeMode(Unit* unit, uint8 /*evadeReason*/) override;
+    // ── Per-hit melee damage multiplier ───────────────────────────────────────
+    void ModifyMeleeDamage(Unit* target, Unit* attacker, uint32& damage) override;
+    // ── Per-hit spell damage multiplier ───────────────────────────────────────
+    void ModifySpellDamageTaken(Unit* target, Unit* attacker, int32& damage, SpellInfo const* spellInfo) override;
+    // ── Per-tick DoT damage multiplier ────────────────────────────────────────
+    void ModifyPeriodicDamageAurasTick(Unit* /*target*/, Unit* attacker, uint32& damage, SpellInfo const* /*spellInfo*/) override;
+
+    static bool HandleBuddyMgrCommand(ChatHandler* handler, char const* args);
+   
+
+private:
+    bool    enabled = false;
+    float   detectionRadius = 100.0f;
+    uint32  maxGroupSize = 5;
+    bool    damageScalingEnabled = true;
+    float   hpScale[6] = { 0.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f };
+    float   dmgScale[6] = { 0.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f };
+};
+
+
+
