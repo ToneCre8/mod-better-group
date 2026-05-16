@@ -381,8 +381,7 @@ void BetterGroup::ModifyPeriodicDamageAurasTick(Unit* target, Unit* attacker, ui
     damage = uint32(float(damage) * it->second.damageMultiplier);
 }
 
-
-bool BetterGroup::HandleBuddyMgrCommand(ChatHandler* handler, char const* args)
+bool BetterGroup::HandleBetterGroupCommand(ChatHandler* handler, char const* args)
 {
     std::istringstream stream(args ? args : "");
     std::string command;

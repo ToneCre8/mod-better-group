@@ -34,7 +34,7 @@ public:
     // ── Per-tick DoT damage multiplier ────────────────────────────────────────
     void ModifyPeriodicDamageAurasTick(Unit* /*target*/, Unit* attacker, uint32& damage, SpellInfo const* /*spellInfo*/) override;
 
-    static bool HandleBuddyMgrCommand(ChatHandler* handler, char const* args);
+    static bool HandleBetterGroupCommand(ChatHandler* handler, char const* args);
    
 
 private:
