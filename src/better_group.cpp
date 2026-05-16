@@ -160,6 +160,9 @@ void BetterGroup::OnPlayerRewardKillRewarder(Player* player, KillRewarder* rewar
     if (!enabled)
         return;
 
+    if (!sConfigMgr->GetOption<bool>("GroupXPCompensation.Enable", false))
+        return;
+
     Group* group = player->GetGroup();
     if (!group)
         return; // Solo — rate is already 1.0, nothing to compensate.
@@ -207,7 +210,7 @@ void BetterGroup::OnPlayerRewardKillRewarder(Player* player, KillRewarder* rewar
 
 void BetterGroup::OnAfterConfigLoad(bool reload)
 {
-    enabled = sConfigMgr->GetOption<bool>("DynamicCreatureScaling.Enable", false);
+    enabled = sConfigMgr->GetOption<bool>("BetterGroup.Enable", false);
     detectionRadius = sConfigMgr->GetOption<float>("DynamicCreatureScaling.DetectionRadius", 100.0f);
     damageScalingEnabled = sConfigMgr->GetOption<bool>("DynamicCreatureScaling.ScaleDamage", true);
 
@@ -268,6 +271,9 @@ void BetterGroup::OnUnitEnterCombat(Unit* unit, Unit* victim)
     if (!enabled)
         return;
 
+    if (!sConfigMgr->GetOption<bool>("DynamicCreatureScaling.Enable", false))
+        return;
+
     Creature* creature = unit->ToCreature();
     if (!creature)
         return;
@@ -313,6 +319,9 @@ void BetterGroup::OnUnitEnterEvadeMode(Unit* unit, uint8 evadeReason)
     if (!enabled)
         return;
 
+    if (!sConfigMgr->GetOption<bool>("DynamicCreatureScaling.Enable", false))
+        return;
+
     Creature* creature = unit->ToCreature();
     if (!creature)
         return;
@@ -332,6 +341,9 @@ void BetterGroup::ModifyMeleeDamage(Unit* target, Unit* attacker, uint32& damage
     if (!enabled || !attacker)
         return;
 
+    if (!sConfigMgr->GetOption<bool>("DynamicCreatureScaling.Enable", false))
+        return;
+
     auto it = _scaledCreatures.find(attacker->GetGUID());
     if (it == _scaledCreatures.end())
         return;
@@ -344,6 +356,9 @@ void BetterGroup::ModifySpellDamageTaken(Unit* target, Unit* attacker, int32& da
     if (!enabled || !attacker || damage <= 0)
         return;
 
+    if (!sConfigMgr->GetOption<bool>("DynamicCreatureScaling.Enable", false))
+        return;
+
     auto it = _scaledCreatures.find(attacker->GetGUID());
     if (it == _scaledCreatures.end())
         return;
@@ -354,6 +369,9 @@ void BetterGroup::ModifySpellDamageTaken(Unit* target, Unit* attacker, int32& da
 void BetterGroup::ModifyPeriodicDamageAurasTick(Unit* target, Unit* attacker, uint32& damage, SpellInfo const* spellInfo)
 {
     if (!enabled || !attacker)
+        return;
+
+    if (!sConfigMgr->GetOption<bool>("DynamicCreatureScaling.Enable", false))
         return;
 
     auto it = _scaledCreatures.find(attacker->GetGUID());
