@@ -15,6 +15,7 @@
 
 #include "Chat.h"
 #include "ChatCommand.h"
+#include "CommandScript.h"
 #include "better_group.h"
 
 
