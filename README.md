@@ -76,7 +76,7 @@ The main switches are:
 | `BetterGroup.Enable` | Master switch for the module | `1` |
 | `DynamicCreatureScaling.Enable` | Enables creature scaling | `1` |
 | `DynamicCreatureScaling.DetectionRadius` | Radius used to count nearby group members | `100.0` |
-| `DynamicCreatureScaling.MaxGroupSize` | Maximum group size considered for scaling, hard-capped at 5 | `5` |
+| `DynamicCreatureScaling.MaxGroupSize` | Maximum group size considered for scaling, supported up to 10 | `10` |
 | `DynamicCreatureScaling.ScaleDamage` | Enables outgoing damage scaling in addition to HP scaling | `1` |
 | `GroupXPCompensation.Enable` | Enables XP compensation | `1` |
 | `GroupXPCompensation.CompensationPct` | Portion of the normal group XP penalty to restore | `1.0` |
@@ -93,6 +93,11 @@ The main switches are:
 | 3 | `2.0x` | `1.35x` |
 | 4 | `2.6x` | `1.50x` |
 | 5 | `3.2x` | `1.65x` |
+| 6 | `3.8x` | `1.80x` |
+| 7 | `4.4x` | `1.95x` |
+| 8 | `5.0x` | `2.10x` |
+| 9 | `5.6x` | `2.25x` |
+| 10 | `6.2x` | `2.40x` |
 
 All values can be tuned in the module config file.
 
@@ -112,7 +117,7 @@ The module exposes GM-only inspection commands:
 | Command | Purpose |
 | --- | --- |
 | `.group better status` | Show the current module configuration and number of actively tracked scaled creatures |
-| `.group better scales` | Show the configured HP and damage multipliers for group sizes 1-5 |
+| `.group better scales` | Show the configured HP and damage multipliers up to the configured max group size |
 | `.group better target` | Inspect the selected creature's scaling eligibility and live scaling state |
 
 Use `.group better` or `.group better help` to print the command list in-game.

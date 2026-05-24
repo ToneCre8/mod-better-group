@@ -38,12 +38,12 @@ DynamicCreatureScaling.Enable = 1
 DynamicCreatureScaling.DetectionRadius = 100.0
 
 #   DynamicCreatureScaling.MaxGroupSize
-#       Description: Maximum group size considered for scaling (hard-capped at 5).
+#       Description: Maximum group size considered for scaling (supported up to 10).
 #       Groups larger than this value (e.g. 6+ from bot parties) are treated as
 #       MaxGroupSize for the purpose of scale table lookup.
-#       Default:     5
+#       Default:     10
 #
-DynamicCreatureScaling.MaxGroupSize = 5
+DynamicCreatureScaling.MaxGroupSize = 10
 
 #   DynamicCreatureScaling.ScaleDamage
 #       Description: Also scale creature outgoing damage (melee, spell, DoTs).
@@ -72,6 +72,11 @@ DynamicCreatureScaling.HPScale.2 = 1.5
 DynamicCreatureScaling.HPScale.3 = 2.0
 DynamicCreatureScaling.HPScale.4 = 2.6
 DynamicCreatureScaling.HPScale.5 = 3.2
+DynamicCreatureScaling.HPScale.6 = 3.8
+DynamicCreatureScaling.HPScale.7 = 4.4
+DynamicCreatureScaling.HPScale.8 = 5.0
+DynamicCreatureScaling.HPScale.9 = 5.6
+DynamicCreatureScaling.HPScale.10 = 6.2
 
 ########################################
 # Damage Scaling Table
@@ -92,6 +97,11 @@ DynamicCreatureScaling.DmgScale.2 = 1.20
 DynamicCreatureScaling.DmgScale.3 = 1.35
 DynamicCreatureScaling.DmgScale.4 = 1.50
 DynamicCreatureScaling.DmgScale.5 = 1.65
+DynamicCreatureScaling.DmgScale.6 = 1.80
+DynamicCreatureScaling.DmgScale.7 = 1.95
+DynamicCreatureScaling.DmgScale.8 = 2.10
+DynamicCreatureScaling.DmgScale.9 = 2.25
+DynamicCreatureScaling.DmgScale.10 = 2.40
 
 ########################################
 # Group XP Compensation 

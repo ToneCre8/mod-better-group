@@ -31,6 +31,8 @@ struct CreatureScalingState
 // Creatures are removed on evade or death.
 static std::unordered_map<ObjectGuid, CreatureScalingState> _scaledCreatures;
 
+constexpr uint32 kMaxSupportedGroupSize = 10;
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 // Returns false for creature types/ranks that should never be scaled.
@@ -241,16 +243,13 @@ void BetterGroup::OnAfterConfigLoad(bool reload)
     compensationPct = std::clamp(sConfigMgr->GetOption<float>("GroupXPCompensation.CompensationPct", 1.0f), 0.0f, 1.0f);
     maxXPCompensationRate = std::max(sConfigMgr->GetOption<float>("GroupXPCompensation.MaxRate", 1.0f), 0.0f);
 
-    constexpr uint32 kHardCap = 5;
-    maxGroupSize = std::min(sConfigMgr->GetOption<uint32>("DynamicCreatureScaling.MaxGroupSize", 5), kHardCap);
+    maxGroupSize = std::clamp(sConfigMgr->GetOption<uint32>("DynamicCreatureScaling.MaxGroupSize", 10), 1u, kMaxSupportedGroupSize);
 
-    static const char* const hpKeys[] = { nullptr, "DynamicCreatureScaling.HPScale.1",  "DynamicCreatureScaling.HPScale.2",  "DynamicCreatureScaling.HPScale.3",  "DynamicCreatureScaling.HPScale.4",  "DynamicCreatureScaling.HPScale.5" };
-    static const char* const dmgKeys[] = { nullptr, "DynamicCreatureScaling.DmgScale.1", "DynamicCreatureScaling.DmgScale.2", "DynamicCreatureScaling.DmgScale.3", "DynamicCreatureScaling.DmgScale.4", "DynamicCreatureScaling.DmgScale.5" };
-
-    for (uint32 i = 1; i <= kHardCap; ++i)
+    for (uint32 i = 1; i <= kMaxSupportedGroupSize; ++i)
     {
-        hpScale[i] = sConfigMgr->GetOption<float>(hpKeys[i], 1.0f);
-        dmgScale[i] = sConfigMgr->GetOption<float>(dmgKeys[i], 1.0f);
+        std::string suffix = std::to_string(i);
+        hpScale[i] = sConfigMgr->GetOption<float>("DynamicCreatureScaling.HPScale." + suffix, i > 1 ? hpScale[i - 1] : 1.0f);
+        dmgScale[i] = sConfigMgr->GetOption<float>("DynamicCreatureScaling.DmgScale." + suffix, i > 1 ? dmgScale[i - 1] : 1.0f);
     }
 }
 
@@ -321,8 +320,8 @@ void BetterGroup::OnUnitEnterCombat(Unit* unit, Unit* victim)
     uint32 groupSize = CountNearbyGroupMembers(creature, attacker, detectionRadius);
     groupSize = std::min(groupSize, maxGroupSize);
 
-    float hpMult = (groupSize > 0 && groupSize <= 5) ? hpScale[groupSize] : 1.0f;
-    float dmgMult = damageScalingEnabled ? ((groupSize > 0 && groupSize <= 5) ? dmgScale[groupSize] : 1.0f) : 1.0f;
+    float hpMult = (groupSize > 0 && groupSize <= kMaxSupportedGroupSize) ? hpScale[groupSize] : 1.0f;
+    float dmgMult = damageScalingEnabled ? ((groupSize > 0 && groupSize <= kMaxSupportedGroupSize) ? dmgScale[groupSize] : 1.0f) : 1.0f;
 
     if (hpMult <= 1.0f && dmgMult <= 1.0f)
         return;
@@ -415,7 +414,7 @@ bool BetterGroup::HandleBetterGroupCommand(ChatHandler* handler, char const* arg
         handler->PSendSysMessage("  Master enabled: {}", sConfigMgr->GetOption<bool>("BetterGroup.Enable", false));
         handler->PSendSysMessage("  Creature scaling enabled: {}", sConfigMgr->GetOption<bool>("DynamicCreatureScaling.Enable", false));
         handler->PSendSysMessage("  Detection radius: {:.1f}", sConfigMgr->GetOption<float>("DynamicCreatureScaling.DetectionRadius", 100.0f));
-        handler->PSendSysMessage("  Max group size: {}", std::min(sConfigMgr->GetOption<uint32>("DynamicCreatureScaling.MaxGroupSize", 5), 5u));
+        handler->PSendSysMessage("  Max group size: {}", std::clamp(sConfigMgr->GetOption<uint32>("DynamicCreatureScaling.MaxGroupSize", 10), 1u, kMaxSupportedGroupSize));
         handler->PSendSysMessage("  Damage scaling enabled: {}", sConfigMgr->GetOption<bool>("DynamicCreatureScaling.ScaleDamage", true));
         handler->PSendSysMessage("  Group XP compensation enabled: {}", sConfigMgr->GetOption<bool>("GroupXPCompensation.Enable", false));
         handler->PSendSysMessage("  XP compensation percent: {:.2f}", std::clamp(sConfigMgr->GetOption<float>("GroupXPCompensation.CompensationPct", 1.0f), 0.0f, 1.0f));
@@ -430,12 +429,19 @@ bool BetterGroup::HandleBetterGroupCommand(ChatHandler* handler, char const* arg
     {
         handler->PSendSysMessage("BetterGroup scaling table:");
         handler->PSendSysMessage("  Players | HP x | Damage x");
-        for (uint32 i = 1; i <= 5; ++i)
+        uint32 maxConfiguredGroupSize = std::clamp(sConfigMgr->GetOption<uint32>("DynamicCreatureScaling.MaxGroupSize", 10), 1u, kMaxSupportedGroupSize);
+        float hpScale = 1.0f;
+        float dmgScale = 1.0f;
+        for (uint32 i = 1; i <= maxConfiguredGroupSize; ++i)
         {
+            std::string suffix = std::to_string(i);
+            hpScale = sConfigMgr->GetOption<float>("DynamicCreatureScaling.HPScale." + suffix, hpScale);
+            dmgScale = sConfigMgr->GetOption<float>("DynamicCreatureScaling.DmgScale." + suffix, dmgScale);
+
             handler->PSendSysMessage("  {:>7} | {:.2f} | {:.2f}",
                 i,
-                sConfigMgr->GetOption<float>(std::string("DynamicCreatureScaling.HPScale.") + std::to_string(i), 1.0f),
-                sConfigMgr->GetOption<float>(std::string("DynamicCreatureScaling.DmgScale.") + std::to_string(i), 1.0f));
+                hpScale,
+                dmgScale);
         }
         return true;
     }

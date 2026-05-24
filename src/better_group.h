@@ -46,10 +46,10 @@ private:
     float   detectionRadius = 100.0f;
     float   compensationPct = 1.0f;
     float   maxXPCompensationRate = 1.0f;
-    uint32  maxGroupSize = 5;
+    uint32  maxGroupSize = 10;
     bool    damageScalingEnabled = true;
-    float   hpScale[6] = { 0.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f };
-    float   dmgScale[6] = { 0.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f };
+    float   hpScale[11] = { 0.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f };
+    float   dmgScale[11] = { 0.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f };
 };
 
 
