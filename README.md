@@ -81,7 +81,7 @@ The main switches are:
 | `GroupXPCompensation.Enable` | Enables XP compensation | `1` |
 | `GroupXPCompensation.CompensationPct` | Portion of the normal group XP penalty to restore | `1.0` |
 | `GroupXPCompensation.MaxRate` | Cap on per-player XP after compensation | `1.0` |
-| `GroupXPCompensation.DisableInRaid` | Prevents compensation in raid groups | `1` |
+| `GroupXPCompensation.DisableInRaid` | Prevents compensation in raid groups | `0` |
 | `GroupXPCompensation.CompensateGrayPenalty` | Also offsets gray-level mismatch XP reduction | `0` |
 
 ### Default scaling table
@@ -93,11 +93,11 @@ The main switches are:
 | 3 | `2.0x` | `1.35x` |
 | 4 | `2.6x` | `1.50x` |
 | 5 | `3.2x` | `1.65x` |
-| 6 | `3.8x` | `1.80x` |
-| 7 | `4.4x` | `1.95x` |
-| 8 | `5.0x` | `2.10x` |
-| 9 | `5.6x` | `2.25x` |
-| 10 | `6.2x` | `2.40x` |
+| 6 | `4.5x` | `1.90x` |
+| 7 | `5.5x` | `2.20x` |
+| 8 | `6.8x` | `2.55x` |
+| 9 | `8.2x` | `2.95x` |
+| 10 | `10.0x` | `3.40x` |
 
 All values can be tuned in the module config file.
 
@@ -108,6 +108,7 @@ All values can be tuned in the module config file.
 - Groups larger than the configured maximum are treated as that maximum for scaling lookup.
 - On evade, scaled creatures are restored to their original maximum health while preserving their current health percentage.
 - With `CompensationPct = 1.0`, total XP awarded across a party can be much higher than a solo kill because each eligible member can receive solo-equivalent XP. Lower the value if you want softer progression.
+- Keep `GroupXPCompensation.DisableInRaid = 0` if you want 6-10 player raid groups to receive compensated XP. With it enabled, a same-level 10-player outdoor raid receives AzerothCore's raw split, roughly 14% of solo XP before rounding and other modifiers.
 - When `CompensateGrayPenalty = 1`, the module may temporarily raise the internal pre-penalty XP rate above `MaxRate` so the final post-penalty reward can still respect that configured cap.
 
 ## Commands

@@ -236,7 +236,7 @@ void BetterGroup::OnAfterConfigLoad(bool reload)
     enabled = sConfigMgr->GetOption<bool>("BetterGroup.Enable", false);
     creatureScalingEnabled = sConfigMgr->GetOption<bool>("DynamicCreatureScaling.Enable", false);
     groupXPCompensationEnabled = sConfigMgr->GetOption<bool>("GroupXPCompensation.Enable", false);
-    disableXPCompensationInRaid = sConfigMgr->GetOption<bool>("GroupXPCompensation.DisableInRaid", true);
+    disableXPCompensationInRaid = sConfigMgr->GetOption<bool>("GroupXPCompensation.DisableInRaid", false);
     compensateGrayPenalty = sConfigMgr->GetOption<bool>("GroupXPCompensation.CompensateGrayPenalty", false);
     detectionRadius = sConfigMgr->GetOption<float>("DynamicCreatureScaling.DetectionRadius", 100.0f);
     damageScalingEnabled = sConfigMgr->GetOption<bool>("DynamicCreatureScaling.ScaleDamage", true);
@@ -419,7 +419,7 @@ bool BetterGroup::HandleBetterGroupCommand(ChatHandler* handler, char const* arg
         handler->PSendSysMessage("  Group XP compensation enabled: {}", sConfigMgr->GetOption<bool>("GroupXPCompensation.Enable", false));
         handler->PSendSysMessage("  XP compensation percent: {:.2f}", std::clamp(sConfigMgr->GetOption<float>("GroupXPCompensation.CompensationPct", 1.0f), 0.0f, 1.0f));
         handler->PSendSysMessage("  XP max rate: {:.2f}", std::max(sConfigMgr->GetOption<float>("GroupXPCompensation.MaxRate", 1.0f), 0.0f));
-        handler->PSendSysMessage("  XP disabled in raids: {}", sConfigMgr->GetOption<bool>("GroupXPCompensation.DisableInRaid", true));
+        handler->PSendSysMessage("  XP disabled in raids: {}", sConfigMgr->GetOption<bool>("GroupXPCompensation.DisableInRaid", false));
         handler->PSendSysMessage("  Gray penalty compensation: {}", sConfigMgr->GetOption<bool>("GroupXPCompensation.CompensateGrayPenalty", false));
         handler->PSendSysMessage("  Creatures currently tracked as scaled: {}", _scaledCreatures.size());
         return true;

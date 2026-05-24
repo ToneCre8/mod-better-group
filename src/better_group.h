@@ -41,7 +41,7 @@ private:
     bool    enabled = false;
     bool    creatureScalingEnabled = false;
     bool    groupXPCompensationEnabled = false;
-    bool    disableXPCompensationInRaid = true;
+    bool    disableXPCompensationInRaid = false;
     bool    compensateGrayPenalty = false;
     float   detectionRadius = 100.0f;
     float   compensationPct = 1.0f;

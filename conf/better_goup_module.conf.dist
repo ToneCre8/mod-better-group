@@ -72,11 +72,11 @@ DynamicCreatureScaling.HPScale.2 = 1.5
 DynamicCreatureScaling.HPScale.3 = 2.0
 DynamicCreatureScaling.HPScale.4 = 2.6
 DynamicCreatureScaling.HPScale.5 = 3.2
-DynamicCreatureScaling.HPScale.6 = 3.8
-DynamicCreatureScaling.HPScale.7 = 4.4
-DynamicCreatureScaling.HPScale.8 = 5.0
-DynamicCreatureScaling.HPScale.9 = 5.6
-DynamicCreatureScaling.HPScale.10 = 6.2
+DynamicCreatureScaling.HPScale.6 = 4.5
+DynamicCreatureScaling.HPScale.7 = 5.5
+DynamicCreatureScaling.HPScale.8 = 6.8
+DynamicCreatureScaling.HPScale.9 = 8.2
+DynamicCreatureScaling.HPScale.10 = 10.0
 
 ########################################
 # Damage Scaling Table
@@ -97,11 +97,11 @@ DynamicCreatureScaling.DmgScale.2 = 1.20
 DynamicCreatureScaling.DmgScale.3 = 1.35
 DynamicCreatureScaling.DmgScale.4 = 1.50
 DynamicCreatureScaling.DmgScale.5 = 1.65
-DynamicCreatureScaling.DmgScale.6 = 1.80
-DynamicCreatureScaling.DmgScale.7 = 1.95
-DynamicCreatureScaling.DmgScale.8 = 2.10
-DynamicCreatureScaling.DmgScale.9 = 2.25
-DynamicCreatureScaling.DmgScale.10 = 2.40
+DynamicCreatureScaling.DmgScale.6 = 1.90
+DynamicCreatureScaling.DmgScale.7 = 2.20
+DynamicCreatureScaling.DmgScale.8 = 2.55
+DynamicCreatureScaling.DmgScale.9 = 2.95
+DynamicCreatureScaling.DmgScale.10 = 3.40
 
 ########################################
 # Group XP Compensation 
@@ -150,14 +150,15 @@ GroupXPCompensation.MaxRate = 1.0
 
 #   GroupXPCompensation.DisableInRaid
 #       Description: Do not apply compensation when the player is in a raid group.
-#       Raids already use a flat groupRate of 1.0 internally, but per-member
-#       rates are still diluted by the large member count. Keeping this enabled
-#       (1) is the safest choice for raid balance.
+#       Outdoor raid groups still receive AzerothCore's normal group XP split
+#       before this module runs, so a 10-player raid can receive roughly 14%
+#       of solo XP unless compensation is allowed. Keep this disabled (0) when
+#       using 6-10 player bot raids for leveling.
 #
-#       Default:     1 - Disabled in raids (recommended)
-#                    0 - Apply compensation in raids too
+#       Default:     0 - Apply compensation in raids too
+#                    1 - Disable compensation in raids
 #
-GroupXPCompensation.DisableInRaid = 1
+GroupXPCompensation.DisableInRaid = 0
 
 #   GroupXPCompensation.CompensateGrayPenalty
 #       Description: Also compensate for the half-XP penalty applied when some
