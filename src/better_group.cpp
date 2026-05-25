@@ -381,7 +381,60 @@ static uint32 CountPoolEntries(std::unordered_map<uint8, std::vector<uint32>> co
     return count;
 }
 
-static void BuildRandomLootEntriesFromItemTemplates()
+static void AddRandomLootItemToPool(uint32 itemId, std::unordered_set<uint32>& seenItemIds, uint32& whiteEntries, uint32& greenEntries, uint32& blueEntries, uint32& skippedEntries)
+{
+    if (!seenItemIds.insert(itemId).second)
+        return;
+
+    ItemTemplate const* itemTemplate = sObjectMgr->GetItemTemplate(itemId);
+    if (!IsSupportedRandomLootItem(itemTemplate))
+    {
+        ++skippedEntries;
+        return;
+    }
+
+    uint8 const requiredLevel = uint8(itemTemplate->RequiredLevel);
+    if (itemTemplate->Quality == ITEM_QUALITY_NORMAL)
+    {
+        _whiteLootByRequiredLevel[requiredLevel].push_back(itemTemplate->ItemId);
+        ++whiteEntries;
+    }
+    else if (itemTemplate->Quality == ITEM_QUALITY_UNCOMMON)
+    {
+        _greenLootByRequiredLevel[requiredLevel].push_back(itemTemplate->ItemId);
+        ++greenEntries;
+    }
+    else if (itemTemplate->Quality == ITEM_QUALITY_RARE)
+    {
+        if (itemTemplate->RequiredLevel < _randomLootConfig.blueMinRequiredLevel)
+        {
+            ++skippedEntries;
+            return;
+        }
+
+        _blueLootByRequiredLevel[requiredLevel].push_back(itemTemplate->ItemId);
+        ++blueEntries;
+    }
+}
+
+static uint32 LoadRandomLootItemsFromQuery(char const* sql, std::unordered_set<uint32>& seenItemIds, uint32& whiteEntries, uint32& greenEntries, uint32& blueEntries, uint32& skippedEntries)
+{
+    uint32 rows = 0;
+
+    if (QueryResult result = WorldDatabase.Query(sql))
+    {
+        do
+        {
+            Field* fields = result->Fetch();
+            AddRandomLootItemToPool(fields[0].Get<uint32>(), seenItemIds, whiteEntries, greenEntries, blueEntries, skippedEntries);
+            ++rows;
+        } while (result->NextRow());
+    }
+
+    return rows;
+}
+
+static void BuildRandomLootEntriesFromInstanceLootTemplates()
 {
     _whiteLootByRequiredLevel.clear();
     _greenLootByRequiredLevel.clear();
@@ -398,43 +451,30 @@ static void BuildRandomLootEntriesFromItemTemplates()
     uint32 greenEntries = 0;
     uint32 blueEntries = 0;
     uint32 skippedEntries = 0;
+    std::unordered_set<uint32> seenItemIds;
 
-    for (ItemTemplateContainer::const_iterator itr = itemTemplateStore->begin(); itr != itemTemplateStore->end(); ++itr)
-    {
-        ItemTemplate const& itemTemplate = itr->second;
-        if (!IsSupportedRandomLootItem(&itemTemplate))
-        {
-            ++skippedEntries;
-            continue;
-        }
+    uint32 const directRows = LoadRandomLootItemsFromQuery(
+        "SELECT DISTINCT clt.Item "
+        "FROM creature c "
+        "INNER JOIN creature_template ct ON ct.entry IN (c.id1, c.id2, c.id3) "
+        "INNER JOIN creature_loot_template clt ON clt.Entry = ct.lootid "
+        "INNER JOIN instance_template it ON it.map = c.map "
+        "WHERE ct.lootid > 0 AND clt.Reference = 0 AND clt.QuestRequired = 0 AND clt.Item > 0",
+        seenItemIds, whiteEntries, greenEntries, blueEntries, skippedEntries);
 
-        uint8 const requiredLevel = uint8(itemTemplate.RequiredLevel);
-        if (itemTemplate.Quality == ITEM_QUALITY_NORMAL)
-        {
-            _whiteLootByRequiredLevel[requiredLevel].push_back(itemTemplate.ItemId);
-            ++whiteEntries;
-        }
-        else if (itemTemplate.Quality == ITEM_QUALITY_UNCOMMON)
-        {
-            _greenLootByRequiredLevel[requiredLevel].push_back(itemTemplate.ItemId);
-            ++greenEntries;
-        }
-        else if (itemTemplate.Quality == ITEM_QUALITY_RARE)
-        {
-            if (itemTemplate.RequiredLevel < _randomLootConfig.blueMinRequiredLevel)
-            {
-                ++skippedEntries;
-                continue;
-            }
-
-            _blueLootByRequiredLevel[requiredLevel].push_back(itemTemplate.ItemId);
-            ++blueEntries;
-        }
-    }
+    uint32 const referenceRows = LoadRandomLootItemsFromQuery(
+        "SELECT DISTINCT rlt.Item "
+        "FROM creature c "
+        "INNER JOIN creature_template ct ON ct.entry IN (c.id1, c.id2, c.id3) "
+        "INNER JOIN creature_loot_template clt ON clt.Entry = ct.lootid "
+        "INNER JOIN instance_template it ON it.map = c.map "
+        "INNER JOIN reference_loot_template rlt ON rlt.Entry = clt.Reference "
+        "WHERE ct.lootid > 0 AND clt.Reference > 0 AND clt.QuestRequired = 0 AND rlt.Reference = 0 AND rlt.QuestRequired = 0 AND rlt.Item > 0",
+        seenItemIds, whiteEntries, greenEntries, blueEntries, skippedEntries);
 
     LOG_INFO("server.loading",
-        ">> BetterGroup random loot template scan: whiteEntries={}, greenEntries={}, blueEntries={}, skippedEntries={}",
-        whiteEntries, greenEntries, blueEntries, skippedEntries);
+        ">> BetterGroup random loot instance-loot scan: directRows={}, referenceRows={}, whiteEntries={}, greenEntries={}, blueEntries={}, skippedEntries={}",
+        directRows, referenceRows, whiteEntries, greenEntries, blueEntries, skippedEntries);
 }
 
 static void ReloadRandomLootConfig(bool buildTemplatePool)
@@ -470,7 +510,7 @@ static void ReloadRandomLootConfig(bool buildTemplatePool)
     if (buildTemplatePool)
     {
         LoadDisabledRandomLootItemIds();
-        BuildRandomLootEntriesFromItemTemplates();
+        BuildRandomLootEntriesFromInstanceLootTemplates();
     }
     else
     {
@@ -478,7 +518,7 @@ static void ReloadRandomLootConfig(bool buildTemplatePool)
         _whiteLootByRequiredLevel.clear();
         _greenLootByRequiredLevel.clear();
         _blueLootByRequiredLevel.clear();
-        LOG_INFO("server.loading", ">> BetterGroup random loot config loaded before runtime item templates are ready. Deferring item-template pool build until startup.");
+        LOG_INFO("server.loading", ">> BetterGroup random loot config loaded before runtime item templates are ready. Deferring instance-loot pool build until startup.");
     }
 
     LOG_INFO("server.loading",
@@ -578,10 +618,10 @@ static void TryAddRandomGroupLoot(Creature* creature, float detectionRadius)
 {
     if (!_randomLootRuntimeReady && _randomLootConfig.enabled)
     {
-        LOG_INFO("module", "BetterGroup random loot detected runtime pools before startup. Retrying item-template pool build.");
+        LOG_INFO("module", "BetterGroup random loot detected runtime pools before startup. Retrying instance-loot pool build.");
         _randomLootRuntimeReady = true;
         LoadDisabledRandomLootItemIds();
-        BuildRandomLootEntriesFromItemTemplates();
+        BuildRandomLootEntriesFromInstanceLootTemplates();
     }
 
     if (!_randomLootConfig.enabled || !creature)

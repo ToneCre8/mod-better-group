@@ -46,7 +46,7 @@ You can also choose whether raid groups are excluded and whether gray-level mism
 
 The optional random group loot feature adds one bonus armor or weapon item directly to an eligible creature's loot when enough nearby group members participated. It is intended as a gearing path for 6-10 player outdoor raid groups.
 
-The item pool is built from existing `item_template` rows. It filters out quest/temp items, unsupported qualities, non-gear items, relic slot items, and item IDs listed in `mod_bettergroup_disabled_items` when that table exists. It intentionally does not filter by player class, race, armor proficiency, or weapon proficiency, because the bonus is random group loot rather than personal smart loot.
+The item pool is built from creature loot tables used by spawned creatures inside instance maps, including one level of `reference_loot_template` entries. The resulting items are validated against `item_template` and filtered for quest/temp items, unsupported qualities, non-gear items, relic slot items, and item IDs listed in `mod_bettergroup_disabled_items` when that table exists. It intentionally does not filter by player class, race, armor proficiency, or weapon proficiency, because the bonus is random group loot rather than personal smart loot.
 
 ## Installation
 

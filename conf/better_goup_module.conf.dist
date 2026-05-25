@@ -182,7 +182,9 @@ GroupXPCompensation.CompensateGrayPenalty = 0
 # when the kill was made by a nearby group of at least MinGroupSize players.
 # This is intended as a gearing path for 6-10 player outdoor raid groups.
 #
-# The item pool is built from existing item_template rows and filtered by:
+# The item pool is built from creature loot tables used by spawned creatures
+# inside instance maps, including one level of reference_loot_template entries.
+# The resulting items are validated against item_template and filtered by:
 #   - armor or weapon item class only
 #   - white, green, or blue quality only
 #   - non-quest bonding
