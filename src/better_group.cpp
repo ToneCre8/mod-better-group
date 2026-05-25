@@ -296,10 +296,13 @@ static void LoadDisabledRandomLootItemIds()
     _disabledRandomLootItemIds.clear();
 
     uint32 loaded = 0;
-    if (WorldTableExists("mod_bettergroup_disabled_items"))
+    bool const tableExists = WorldTableExists("mod_bettergroup_disabled_items");
+    if (tableExists)
         loaded = LoadDisabledItemIdsFromTable("mod_bettergroup_disabled_items");
 
-    if (!loaded)
+    if (!tableExists)
+        LOG_WARN("module", "BetterGroup random loot could not find mod_bettergroup_disabled_items. Continuing with no disabled item ids.");
+    else if (!loaded)
         LOG_WARN("module", "BetterGroup random loot found no entries in mod_bettergroup_disabled_items.");
 
     LOG_INFO("server.loading", ">> BetterGroup random loot loaded {} disabled item ids.", loaded);
@@ -417,11 +420,11 @@ static void AddRandomLootItemToPool(uint32 itemId, std::unordered_set<uint32>& s
     }
 }
 
-static uint32 LoadRandomLootItemsFromQuery(char const* sql, std::unordered_set<uint32>& seenItemIds, uint32& whiteEntries, uint32& greenEntries, uint32& blueEntries, uint32& skippedEntries)
+static uint32 LoadRandomLootItemsFromQuery(std::string const& sql, std::unordered_set<uint32>& seenItemIds, uint32& whiteEntries, uint32& greenEntries, uint32& blueEntries, uint32& skippedEntries)
 {
     uint32 rows = 0;
 
-    if (QueryResult result = WorldDatabase.Query(sql))
+    if (QueryResult result = WorldDatabase.Query(sql.c_str()))
     {
         do
         {
@@ -429,6 +432,77 @@ static uint32 LoadRandomLootItemsFromQuery(char const* sql, std::unordered_set<u
             AddRandomLootItemToPool(fields[0].Get<uint32>(), seenItemIds, whiteEntries, greenEntries, blueEntries, skippedEntries);
             ++rows;
         } while (result->NextRow());
+    }
+
+    return rows;
+}
+
+static uint32 LoadInstanceLootIdsForCreatureColumn(char const* creatureColumn, std::unordered_set<uint32>& lootIds)
+{
+    uint32 rows = 0;
+    if (QueryResult result = WorldDatabase.Query(
+        "SELECT DISTINCT ct.lootid "
+        "FROM creature c "
+        "INNER JOIN instance_template it ON it.map = c.map "
+        "INNER JOIN creature_template ct ON ct.entry = c.{} "
+        "WHERE ct.lootid > 0",
+        creatureColumn))
+    {
+        do
+        {
+            Field* fields = result->Fetch();
+            lootIds.insert(fields[0].Get<uint32>());
+            ++rows;
+        } while (result->NextRow());
+    }
+
+    return rows;
+}
+
+static std::string BuildInList(std::vector<uint32> const& values, size_t start, size_t count)
+{
+    std::ostringstream stream;
+    for (size_t i = 0; i < count; ++i)
+    {
+        if (i)
+            stream << ',';
+
+        stream << values[start + i];
+    }
+
+    return stream.str();
+}
+
+static uint32 LoadRandomLootItemsFromInstanceLootIds(std::vector<uint32> const& lootIds, bool referenceLoot, std::unordered_set<uint32>& seenItemIds, uint32& whiteEntries, uint32& greenEntries, uint32& blueEntries, uint32& skippedEntries)
+{
+    uint32 rows = 0;
+    constexpr size_t chunkSize = 500;
+
+    for (size_t start = 0; start < lootIds.size(); start += chunkSize)
+    {
+        size_t const count = std::min(chunkSize, lootIds.size() - start);
+        std::string const inList = BuildInList(lootIds, start, count);
+        std::string sql;
+
+        if (referenceLoot)
+        {
+            sql =
+                "SELECT DISTINCT rlt.Item "
+                "FROM creature_loot_template clt "
+                "INNER JOIN reference_loot_template rlt ON rlt.Entry = clt.Reference "
+                "WHERE clt.Entry IN (" + inList + ") "
+                "AND clt.Reference > 0 AND clt.QuestRequired = 0 AND rlt.Reference = 0 AND rlt.QuestRequired = 0 AND rlt.Item > 0";
+        }
+        else
+        {
+            sql =
+                "SELECT DISTINCT Item "
+                "FROM creature_loot_template "
+                "WHERE Entry IN (" + inList + ") "
+                "AND Reference = 0 AND QuestRequired = 0 AND Item > 0";
+        }
+
+        rows += LoadRandomLootItemsFromQuery(sql, seenItemIds, whiteEntries, greenEntries, blueEntries, skippedEntries);
     }
 
     return rows;
@@ -453,24 +527,21 @@ static void BuildRandomLootEntriesFromInstanceLootTemplates()
     uint32 skippedEntries = 0;
     std::unordered_set<uint32> seenItemIds;
 
-    uint32 const directRows = LoadRandomLootItemsFromQuery(
-        "SELECT DISTINCT clt.Item "
-        "FROM creature c "
-        "INNER JOIN creature_template ct ON ct.entry IN (c.id1, c.id2, c.id3) "
-        "INNER JOIN creature_loot_template clt ON clt.Entry = ct.lootid "
-        "INNER JOIN instance_template it ON it.map = c.map "
-        "WHERE ct.lootid > 0 AND clt.Reference = 0 AND clt.QuestRequired = 0 AND clt.Item > 0",
-        seenItemIds, whiteEntries, greenEntries, blueEntries, skippedEntries);
+    LOG_INFO("server.loading", ">> BetterGroup random loot building instance loot pool...");
 
-    uint32 const referenceRows = LoadRandomLootItemsFromQuery(
-        "SELECT DISTINCT rlt.Item "
-        "FROM creature c "
-        "INNER JOIN creature_template ct ON ct.entry IN (c.id1, c.id2, c.id3) "
-        "INNER JOIN creature_loot_template clt ON clt.Entry = ct.lootid "
-        "INNER JOIN instance_template it ON it.map = c.map "
-        "INNER JOIN reference_loot_template rlt ON rlt.Entry = clt.Reference "
-        "WHERE ct.lootid > 0 AND clt.Reference > 0 AND clt.QuestRequired = 0 AND rlt.Reference = 0 AND rlt.QuestRequired = 0 AND rlt.Item > 0",
-        seenItemIds, whiteEntries, greenEntries, blueEntries, skippedEntries);
+    std::unordered_set<uint32> instanceLootIdSet;
+    uint32 const id1Rows = LoadInstanceLootIdsForCreatureColumn("id1", instanceLootIdSet);
+    uint32 const id2Rows = LoadInstanceLootIdsForCreatureColumn("id2", instanceLootIdSet);
+    uint32 const id3Rows = LoadInstanceLootIdsForCreatureColumn("id3", instanceLootIdSet);
+    std::vector<uint32> instanceLootIds(instanceLootIdSet.begin(), instanceLootIdSet.end());
+
+    LOG_INFO("server.loading", ">> BetterGroup random loot found {} unique instance loot ids (id1Rows={}, id2Rows={}, id3Rows={}).",
+        uint32(instanceLootIds.size()), id1Rows, id2Rows, id3Rows);
+
+    uint32 const directRows = LoadRandomLootItemsFromInstanceLootIds(instanceLootIds, false, seenItemIds, whiteEntries, greenEntries, blueEntries, skippedEntries);
+    LOG_INFO("server.loading", ">> BetterGroup random loot direct instance rows scanned: {}", directRows);
+
+    uint32 const referenceRows = LoadRandomLootItemsFromInstanceLootIds(instanceLootIds, true, seenItemIds, whiteEntries, greenEntries, blueEntries, skippedEntries);
 
     LOG_INFO("server.loading",
         ">> BetterGroup random loot instance-loot scan: directRows={}, referenceRows={}, whiteEntries={}, greenEntries={}, blueEntries={}, skippedEntries={}",
