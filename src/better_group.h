@@ -18,6 +18,7 @@ public:
 
     //PlayerScript
     void OnPlayerRewardKillRewarder(Player* player, KillRewarder* rewarder, bool isDungeon, float& rate) override;
+    void OnPlayerLeaveCombat(Player* player) override;
 
     //WorldScript
     void OnAfterConfigLoad(bool reload) override;
@@ -49,6 +50,11 @@ private:
     float   maxXPCompensationRate = 1.0f;
     uint32  maxGroupSize = 10;
     bool    damageScalingEnabled = true;
+    bool    postCombatRefreshEnabled = false;
+    bool    postCombatRefreshOutdoorOnly = true;
+    uint32  postCombatRefreshMinGroupSize = 6;
+    float   postCombatRefreshHealthPct = 95.0f;
+    float   postCombatRefreshManaPct = 95.0f;
     float   hpScale[11] = { 0.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f };
     float   dmgScale[11] = { 0.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f };
 };

@@ -175,6 +175,53 @@ GroupXPCompensation.DisableInRaid = 0
 GroupXPCompensation.CompensateGrayPenalty = 0
 
 ########################################
+# Post-Combat Refresh
+########################################
+#
+# Applies the level-appropriate mage conjured food/water aura automatically
+# after a player leaves combat, if the nearby group is large enough and the
+# player is missing enough health or mana.
+#
+# Level 65+ uses conjured refreshment spells when available.
+#
+########################################
+
+#   BetterGroup.PostCombatRefresh.Enable
+#       Description: Enable automatic post-combat food/water refresh.
+#       Default:     0 - Disabled
+#                    1 - Enabled
+#
+BetterGroup.PostCombatRefresh.Enable = 0
+
+#   BetterGroup.PostCombatRefresh.MinGroupSize
+#       Description: Minimum nearby group size required before refresh can
+#       trigger. Values are clamped to 1-10.
+#       Default:     6
+#
+BetterGroup.PostCombatRefresh.MinGroupSize = 6
+
+#   BetterGroup.PostCombatRefresh.OutdoorOnly
+#       Description: Only apply refresh outside instanced content.
+#       Default:     1
+#
+BetterGroup.PostCombatRefresh.OutdoorOnly = 1
+
+#   BetterGroup.PostCombatRefresh.HealthPct
+#       Description: Apply food/refreshment when health is below this percent.
+#       Default:     95.0
+#       Range:       1.0 - 100.0
+#
+BetterGroup.PostCombatRefresh.HealthPct = 95.0
+
+#   BetterGroup.PostCombatRefresh.ManaPct
+#       Description: Apply water/refreshment to mana users when mana is below
+#       this percent.
+#       Default:     95.0
+#       Range:       1.0 - 100.0
+#
+BetterGroup.PostCombatRefresh.ManaPct = 95.0
+
+########################################
 # Random Group Loot
 ########################################
 #

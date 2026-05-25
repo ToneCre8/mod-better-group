@@ -42,6 +42,44 @@ static std::unordered_map<ObjectGuid, CreatureScalingState> _scaledCreatures;
 constexpr uint32 kMaxSupportedGroupSize = 10;
 constexpr uint8 kDefaultRandomLootRequiredLevelWindow = 3;
 
+struct LevelSpell
+{
+    uint8 minLevel;
+    uint32 spellId;
+};
+
+static constexpr LevelSpell kConjuredFoodSpells[] =
+{
+    { 1, 433 },    // Conjured Muffin
+    { 5, 434 },    // Conjured Bread
+    { 15, 435 },   // Conjured Rye
+    { 25, 1127 },  // Conjured Pumpernickel
+    { 35, 1129 },  // Conjured Sourdough
+    { 45, 1131 },  // Conjured Sweet Roll
+    { 55, 29073 }, // Conjured Cinnamon Roll
+    { 65, 33725 }  // Conjured Croissant
+};
+
+static constexpr LevelSpell kConjuredWaterSpells[] =
+{
+    { 1, 430 },    // Conjured Water
+    { 5, 431 },    // Conjured Fresh Water
+    { 15, 432 },   // Conjured Purified Water
+    { 25, 1133 },  // Conjured Spring Water
+    { 35, 1135 },  // Conjured Mineral Water
+    { 45, 1137 },  // Conjured Sparkling Water
+    { 55, 22734 }, // Conjured Crystal Water
+    { 60, 34291 }, // Conjured Mountain Spring Water
+    { 65, 27089 }  // Conjured Glacier Water
+};
+
+static constexpr LevelSpell kConjuredRefreshmentSpells[] =
+{
+    { 65, 44166 }, // Conjured Mana Biscuit
+    { 74, 61828 }, // Conjured Mana Pie
+    { 80, 58648 }  // Conjured Mana Strudel
+};
+
 struct BetterGroupRandomLootConfig
 {
     bool enabled = false;
@@ -161,6 +199,79 @@ static uint32 CountNearbyGroupMembers(Creature const* creature, Player* attacker
     return std::max(count, 1u);
 }
 
+static uint32 CountNearbyPlayerGroupMembers(Player const* player, float radius)
+{
+    Group* group = player->GetGroup();
+    if (!group)
+        return 1;
+
+    uint32 count = 0;
+    for (GroupReference* itr = group->GetFirstMember(); itr != nullptr; itr = itr->next())
+    {
+        if (Player* member = itr->GetSource())
+        {
+            if (member->IsAlive() &&
+                member->IsInMap(player) &&
+                member->GetExactDist(player) <= radius)
+                ++count;
+        }
+    }
+
+    return std::max(count, 1u);
+}
+
+static uint32 SelectLevelSpell(LevelSpell const* spells, size_t count, uint8 level)
+{
+    uint32 selectedSpellId = 0;
+    for (size_t i = 0; i < count; ++i)
+    {
+        if (level < spells[i].minLevel)
+            break;
+
+        selectedSpellId = spells[i].spellId;
+    }
+
+    return selectedSpellId;
+}
+
+template <size_t N>
+static uint32 SelectLevelSpell(LevelSpell const (&spells)[N], uint8 level)
+{
+    return SelectLevelSpell(spells, N, level);
+}
+
+static uint32 SelectConjuredFoodSpell(uint8 level)
+{
+    return SelectLevelSpell(kConjuredFoodSpells, level);
+}
+
+static uint32 SelectConjuredWaterSpell(uint8 level)
+{
+    return SelectLevelSpell(kConjuredWaterSpells, level);
+}
+
+static uint32 SelectConjuredRefreshmentSpell(uint8 level)
+{
+    return SelectLevelSpell(kConjuredRefreshmentSpells, level);
+}
+
+static float GetHealthPct(Player const* player)
+{
+    if (!player->GetMaxHealth())
+        return 100.0f;
+
+    return float(player->GetHealth()) * 100.0f / float(player->GetMaxHealth());
+}
+
+static float GetManaPct(Player const* player)
+{
+    uint32 const maxMana = player->GetMaxPower(POWER_MANA);
+    if (!maxMana)
+        return 100.0f;
+
+    return float(player->GetPower(POWER_MANA)) * 100.0f / float(maxMana);
+}
+
 // Returns true when the group's XP for this kill would be halved due to
 // gray-level mismatch (_isFullXP == false in KillRewarder).
 // Replicates the _InitGroupData() logic from KillRewarder.cpp so we can
@@ -265,6 +376,51 @@ void BetterGroup::OnPlayerRewardKillRewarder(Player* player, KillRewarder* rewar
             // final cap here so the post-halving reward can still reach it.
             rate = std::min(rate * 2.0f, maxXPCompensationRate * 2.0f);
         }
+    }
+}
+
+void BetterGroup::OnPlayerLeaveCombat(Player* player)
+{
+    if (!enabled || !postCombatRefreshEnabled || !player)
+        return;
+
+    if (!player->IsAlive() || player->IsInCombat() || player->IsMounted())
+        return;
+
+    if (postCombatRefreshOutdoorOnly && player->GetMap() && player->GetMap()->IsDungeon())
+        return;
+
+    if (CountNearbyPlayerGroupMembers(player, detectionRadius) < postCombatRefreshMinGroupSize)
+        return;
+
+    bool const needsHealth = GetHealthPct(player) < postCombatRefreshHealthPct;
+    bool const hasMana = player->GetMaxPower(POWER_MANA) > 0;
+    bool const needsMana = hasMana && GetManaPct(player) < postCombatRefreshManaPct;
+
+    if (!needsHealth && !needsMana)
+        return;
+
+    uint8 const level = player->GetLevel();
+    if (uint32 const refreshmentSpellId = SelectConjuredRefreshmentSpell(level))
+    {
+        if (!player->HasAura(refreshmentSpellId))
+            player->CastSpell(player, refreshmentSpellId, true);
+
+        return;
+    }
+
+    if (needsHealth)
+    {
+        if (uint32 const foodSpellId = SelectConjuredFoodSpell(level))
+            if (!player->HasAura(foodSpellId))
+                player->CastSpell(player, foodSpellId, true);
+    }
+
+    if (needsMana)
+    {
+        if (uint32 const waterSpellId = SelectConjuredWaterSpell(level))
+            if (!player->HasAura(waterSpellId))
+                player->CastSpell(player, waterSpellId, true);
     }
 }
 
@@ -782,6 +938,11 @@ void BetterGroup::OnAfterConfigLoad(bool reload)
     damageScalingEnabled = sConfigMgr->GetOption<bool>("DynamicCreatureScaling.ScaleDamage", true);
     compensationPct = std::clamp(sConfigMgr->GetOption<float>("GroupXPCompensation.CompensationPct", 1.0f), 0.0f, 1.0f);
     maxXPCompensationRate = std::max(sConfigMgr->GetOption<float>("GroupXPCompensation.MaxRate", 1.0f), 0.0f);
+    postCombatRefreshEnabled = sConfigMgr->GetOption<bool>("BetterGroup.PostCombatRefresh.Enable", false);
+    postCombatRefreshOutdoorOnly = sConfigMgr->GetOption<bool>("BetterGroup.PostCombatRefresh.OutdoorOnly", true);
+    postCombatRefreshMinGroupSize = std::clamp(sConfigMgr->GetOption<uint32>("BetterGroup.PostCombatRefresh.MinGroupSize", 6), 1u, kMaxSupportedGroupSize);
+    postCombatRefreshHealthPct = std::clamp(sConfigMgr->GetOption<float>("BetterGroup.PostCombatRefresh.HealthPct", 95.0f), 1.0f, 100.0f);
+    postCombatRefreshManaPct = std::clamp(sConfigMgr->GetOption<float>("BetterGroup.PostCombatRefresh.ManaPct", 95.0f), 1.0f, 100.0f);
 
     maxGroupSize = std::clamp(sConfigMgr->GetOption<uint32>("DynamicCreatureScaling.MaxGroupSize", 10), 1u, kMaxSupportedGroupSize);
 
@@ -972,6 +1133,11 @@ bool BetterGroup::HandleBetterGroupCommand(ChatHandler* handler, char const* arg
         handler->PSendSysMessage("  XP max rate: {:.2f}", std::max(sConfigMgr->GetOption<float>("GroupXPCompensation.MaxRate", 1.0f), 0.0f));
         handler->PSendSysMessage("  XP disabled in raids: {}", sConfigMgr->GetOption<bool>("GroupXPCompensation.DisableInRaid", false));
         handler->PSendSysMessage("  Gray penalty compensation: {}", sConfigMgr->GetOption<bool>("GroupXPCompensation.CompensateGrayPenalty", false));
+        handler->PSendSysMessage("  Post-combat refresh enabled: {}", sConfigMgr->GetOption<bool>("BetterGroup.PostCombatRefresh.Enable", false));
+        handler->PSendSysMessage("  Post-combat refresh min group size: {}", std::clamp(sConfigMgr->GetOption<uint32>("BetterGroup.PostCombatRefresh.MinGroupSize", 6), 1u, kMaxSupportedGroupSize));
+        handler->PSendSysMessage("  Post-combat refresh thresholds: health<{:.1f}%, mana<{:.1f}%",
+            std::clamp(sConfigMgr->GetOption<float>("BetterGroup.PostCombatRefresh.HealthPct", 95.0f), 1.0f, 100.0f),
+            std::clamp(sConfigMgr->GetOption<float>("BetterGroup.PostCombatRefresh.ManaPct", 95.0f), 1.0f, 100.0f));
         handler->PSendSysMessage("  Random group loot enabled: {}", sConfigMgr->GetOption<bool>("BetterGroup.RandomLoot.Enable", false));
         handler->PSendSysMessage("  Random group loot min group size: {}", std::clamp(sConfigMgr->GetOption<uint32>("BetterGroup.RandomLoot.MinGroupSize", 6), 1u, kMaxSupportedGroupSize));
         handler->PSendSysMessage("  Random group loot pools: white={}, green={}, blue={}",

@@ -4,6 +4,7 @@
 
 - scaling normal outdoor creatures when multiple nearby group members engage them
 - reducing or removing the normal group XP penalty so grouped players can still level efficiently together
+- optionally applying level-appropriate mage conjured food/water auras after combat for large outdoor groups
 - adding optional level-appropriate random armor/weapon loot for 6-10 player outdoor groups
 
 It is especially useful on servers that encourage duo or party leveling, including playerbot-heavy environments where groups may be larger than a typical solo questing setup.
@@ -41,6 +42,10 @@ Examples with the default formula:
 - `CompensationPct = 1.0` gives each member up to solo-equivalent XP per kill
 
 You can also choose whether raid groups are excluded and whether gray-level mismatch penalties should be compensated.
+
+### Post-combat refresh
+
+The optional post-combat refresh feature applies the appropriate mage conjured food and/or water aura after a player leaves combat, gated by nearby group size and health/mana thresholds. Level 65+ characters use conjured refreshment spells when available.
 
 ### Random group loot
 
@@ -90,6 +95,10 @@ The main switches are:
 | `GroupXPCompensation.MaxRate` | Cap on per-player XP after compensation | `1.0` |
 | `GroupXPCompensation.DisableInRaid` | Prevents compensation in raid groups | `0` |
 | `GroupXPCompensation.CompensateGrayPenalty` | Also offsets gray-level mismatch XP reduction | `0` |
+| `BetterGroup.PostCombatRefresh.Enable` | Enables automatic post-combat food/water refresh | `0` |
+| `BetterGroup.PostCombatRefresh.MinGroupSize` | Nearby group size required for post-combat refresh | `6` |
+| `BetterGroup.PostCombatRefresh.HealthPct` | Health threshold for food/refreshment | `95.0` |
+| `BetterGroup.PostCombatRefresh.ManaPct` | Mana threshold for water/refreshment | `95.0` |
 | `BetterGroup.RandomLoot.Enable` | Enables random bonus group loot | `0` |
 | `BetterGroup.RandomLoot.MinGroupSize` | Nearby group size required for bonus loot rolls | `6` |
 | `BetterGroup.RandomLoot.RequiredLevelWindow` | Item required-level range around the creature level | `3` |
