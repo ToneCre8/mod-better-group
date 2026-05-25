@@ -4,7 +4,7 @@
 
 - scaling normal outdoor creatures when multiple nearby group members engage them
 - reducing or removing the normal group XP penalty so grouped players can still level efficiently together
-- optionally applying level-appropriate mage conjured food/water auras after combat for large outdoor groups
+- optionally restoring health/mana after combat for large outdoor groups using mage food/water-style level tiers
 - adding optional level-appropriate random armor/weapon loot for 6-10 player outdoor groups
 
 It is especially useful on servers that encourage duo or party leveling, including playerbot-heavy environments where groups may be larger than a typical solo questing setup.
@@ -45,7 +45,7 @@ You can also choose whether raid groups are excluded and whether gray-level mism
 
 ### Post-combat refresh
 
-The optional post-combat refresh feature applies the appropriate mage conjured food and/or water aura after a player leaves combat, gated by nearby group size and health/mana thresholds. Level 65+ characters use conjured refreshment spells when available.
+The optional post-combat refresh feature restores health and/or mana directly for up to 30 seconds after a player leaves combat, gated by nearby group size and health/mana thresholds. The rates are tuned around mage conjured food/water tiers, but no food or drink aura is applied, so players do not need to sit.
 
 ### Random group loot
 
@@ -95,10 +95,10 @@ The main switches are:
 | `GroupXPCompensation.MaxRate` | Cap on per-player XP after compensation | `1.0` |
 | `GroupXPCompensation.DisableInRaid` | Prevents compensation in raid groups | `0` |
 | `GroupXPCompensation.CompensateGrayPenalty` | Also offsets gray-level mismatch XP reduction | `0` |
-| `BetterGroup.PostCombatRefresh.Enable` | Enables automatic post-combat food/water refresh | `0` |
+| `BetterGroup.PostCombatRefresh.Enable` | Enables automatic post-combat health/mana refresh | `0` |
 | `BetterGroup.PostCombatRefresh.MinGroupSize` | Nearby group size required for post-combat refresh | `6` |
-| `BetterGroup.PostCombatRefresh.HealthPct` | Health threshold for food/refreshment | `95.0` |
-| `BetterGroup.PostCombatRefresh.ManaPct` | Mana threshold for water/refreshment | `95.0` |
+| `BetterGroup.PostCombatRefresh.HealthPct` | Health threshold for direct refresh | `95.0` |
+| `BetterGroup.PostCombatRefresh.ManaPct` | Mana threshold for direct refresh | `95.0` |
 | `BetterGroup.RandomLoot.Enable` | Enables random bonus group loot | `0` |
 | `BetterGroup.RandomLoot.MinGroupSize` | Nearby group size required for bonus loot rolls | `6` |
 | `BetterGroup.RandomLoot.RequiredLevelWindow` | Item required-level range around the creature level | `3` |

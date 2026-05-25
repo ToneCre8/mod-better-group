@@ -178,11 +178,12 @@ GroupXPCompensation.CompensateGrayPenalty = 0
 # Post-Combat Refresh
 ########################################
 #
-# Applies the level-appropriate mage conjured food/water aura automatically
-# after a player leaves combat, if the nearby group is large enough and the
-# player is missing enough health or mana.
+# Restores health and mana directly for up to 30 seconds after a player leaves
+# combat, if the nearby group is large enough and the player is missing enough
+# health or mana.
 #
-# Level 65+ uses conjured refreshment spells when available.
+# The per-second rates are tuned around mage conjured food/water tiers, but no
+# spell aura is applied. The player does not need to sit.
 #
 ########################################
 

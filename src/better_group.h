@@ -19,6 +19,8 @@ public:
     //PlayerScript
     void OnPlayerRewardKillRewarder(Player* player, KillRewarder* rewarder, bool isDungeon, float& rate) override;
     void OnPlayerLeaveCombat(Player* player) override;
+    void OnPlayerUpdate(Player* player, uint32 p_time) override;
+    void OnPlayerLogout(Player* player) override;
 
     //WorldScript
     void OnAfterConfigLoad(bool reload) override;

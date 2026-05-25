@@ -42,42 +42,34 @@ static std::unordered_map<ObjectGuid, CreatureScalingState> _scaledCreatures;
 constexpr uint32 kMaxSupportedGroupSize = 10;
 constexpr uint8 kDefaultRandomLootRequiredLevelWindow = 3;
 
-struct LevelSpell
+struct LevelRefreshRate
 {
     uint8 minLevel;
-    uint32 spellId;
+    uint32 healthPerSecond;
+    uint32 manaPerSecond;
 };
 
-static constexpr LevelSpell kConjuredFoodSpells[] =
+static constexpr LevelRefreshRate kPostCombatRefreshRates[] =
 {
-    { 1, 433 },    // Conjured Muffin
-    { 5, 434 },    // Conjured Bread
-    { 15, 435 },   // Conjured Rye
-    { 25, 1127 },  // Conjured Pumpernickel
-    { 35, 1129 },  // Conjured Sourdough
-    { 45, 1131 },  // Conjured Sweet Roll
-    { 55, 29073 }, // Conjured Cinnamon Roll
-    { 65, 33725 }  // Conjured Croissant
+    { 1, 4, 8 },       // Conjured Muffin / Water
+    { 5, 12, 22 },     // Conjured Bread / Fresh Water
+    { 15, 23, 46 },    // Conjured Rye / Purified Water
+    { 25, 33, 73 },    // Conjured Pumpernickel / Spring Water
+    { 35, 50, 110 },   // Conjured Sourdough / Mineral Water
+    { 45, 75, 168 },   // Conjured Sweet Roll / Sparkling Water
+    { 55, 144, 293 },  // Conjured Cinnamon Roll / Crystal Water
+    { 60, 144, 420 },  // Conjured Cinnamon Roll / Mountain Spring Water
+    { 65, 250, 420 },  // Conjured Croissant / Glacier Water or Mana Biscuit
+    { 74, 432, 720 },  // Conjured Mana Pie
+    { 80, 644, 1074 }  // Conjured Mana Strudel
 };
 
-static constexpr LevelSpell kConjuredWaterSpells[] =
+struct PostCombatRefreshState
 {
-    { 1, 430 },    // Conjured Water
-    { 5, 431 },    // Conjured Fresh Water
-    { 15, 432 },   // Conjured Purified Water
-    { 25, 1133 },  // Conjured Spring Water
-    { 35, 1135 },  // Conjured Mineral Water
-    { 45, 1137 },  // Conjured Sparkling Water
-    { 55, 22734 }, // Conjured Crystal Water
-    { 60, 34291 }, // Conjured Mountain Spring Water
-    { 65, 27089 }  // Conjured Glacier Water
-};
-
-static constexpr LevelSpell kConjuredRefreshmentSpells[] =
-{
-    { 65, 44166 }, // Conjured Mana Biscuit
-    { 74, 61828 }, // Conjured Mana Pie
-    { 80, 58648 }  // Conjured Mana Strudel
+    uint32 healthPerSecond;
+    uint32 manaPerSecond;
+    uint32 elapsedMs = 0;
+    uint32 tickMs = 0;
 };
 
 struct BetterGroupRandomLootConfig
@@ -107,6 +99,7 @@ static std::unordered_set<uint32> _disabledRandomLootItemIds;
 static std::unordered_map<uint8, std::vector<uint32>> _whiteLootByRequiredLevel;
 static std::unordered_map<uint8, std::vector<uint32>> _greenLootByRequiredLevel;
 static std::unordered_map<uint8, std::vector<uint32>> _blueLootByRequiredLevel;
+static std::unordered_map<ObjectGuid, PostCombatRefreshState> _postCombatRefreshStates;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -220,39 +213,18 @@ static uint32 CountNearbyPlayerGroupMembers(Player* player, float radius)
     return std::max(count, 1u);
 }
 
-static uint32 SelectLevelSpell(LevelSpell const* spells, size_t count, uint8 level)
+static LevelRefreshRate SelectPostCombatRefreshRate(uint8 level)
 {
-    uint32 selectedSpellId = 0;
-    for (size_t i = 0; i < count; ++i)
+    LevelRefreshRate selectedRate = kPostCombatRefreshRates[0];
+    for (LevelRefreshRate const& rate : kPostCombatRefreshRates)
     {
-        if (level < spells[i].minLevel)
+        if (level < rate.minLevel)
             break;
 
-        selectedSpellId = spells[i].spellId;
+        selectedRate = rate;
     }
 
-    return selectedSpellId;
-}
-
-template <size_t N>
-static uint32 SelectLevelSpell(LevelSpell const (&spells)[N], uint8 level)
-{
-    return SelectLevelSpell(spells, N, level);
-}
-
-static uint32 SelectConjuredFoodSpell(uint8 level)
-{
-    return SelectLevelSpell(kConjuredFoodSpells, level);
-}
-
-static uint32 SelectConjuredWaterSpell(uint8 level)
-{
-    return SelectLevelSpell(kConjuredWaterSpells, level);
-}
-
-static uint32 SelectConjuredRefreshmentSpell(uint8 level)
-{
-    return SelectLevelSpell(kConjuredRefreshmentSpells, level);
+    return selectedRate;
 }
 
 static float GetHealthPct(Player const* player)
@@ -400,28 +372,66 @@ void BetterGroup::OnPlayerLeaveCombat(Player* player)
     if (!needsHealth && !needsMana)
         return;
 
-    uint8 const level = player->GetLevel();
-    if (uint32 const refreshmentSpellId = SelectConjuredRefreshmentSpell(level))
-    {
-        if (!player->HasAura(refreshmentSpellId))
-            player->CastSpell(player, refreshmentSpellId, true);
+    LevelRefreshRate const rate = SelectPostCombatRefreshRate(player->GetLevel());
+    PostCombatRefreshState state;
+    state.healthPerSecond = needsHealth ? rate.healthPerSecond : 0;
+    state.manaPerSecond = needsMana ? rate.manaPerSecond : 0;
 
+    _postCombatRefreshStates[player->GetGUID()] = state;
+}
+
+void BetterGroup::OnPlayerUpdate(Player* player, uint32 p_time)
+{
+    auto itr = _postCombatRefreshStates.find(player->GetGUID());
+    if (itr == _postCombatRefreshStates.end())
+        return;
+
+    PostCombatRefreshState& state = itr->second;
+    if (!enabled || !postCombatRefreshEnabled || !player->IsAlive() || player->IsInCombat())
+    {
+        _postCombatRefreshStates.erase(itr);
         return;
     }
 
-    if (needsHealth)
+    if (postCombatRefreshOutdoorOnly && player->GetMap() && player->GetMap()->IsDungeon())
     {
-        if (uint32 const foodSpellId = SelectConjuredFoodSpell(level))
-            if (!player->HasAura(foodSpellId))
-                player->CastSpell(player, foodSpellId, true);
+        _postCombatRefreshStates.erase(itr);
+        return;
     }
 
-    if (needsMana)
+    bool const healthFull = player->GetHealth() >= player->GetMaxHealth();
+    bool const manaFull = player->GetMaxPower(POWER_MANA) == 0 || player->GetPower(POWER_MANA) >= player->GetMaxPower(POWER_MANA);
+    if ((state.healthPerSecond == 0 || healthFull) && (state.manaPerSecond == 0 || manaFull))
     {
-        if (uint32 const waterSpellId = SelectConjuredWaterSpell(level))
-            if (!player->HasAura(waterSpellId))
-                player->CastSpell(player, waterSpellId, true);
+        _postCombatRefreshStates.erase(itr);
+        return;
     }
+
+    state.elapsedMs += p_time;
+    state.tickMs += p_time;
+
+    if (state.elapsedMs > 30 * IN_MILLISECONDS)
+    {
+        _postCombatRefreshStates.erase(itr);
+        return;
+    }
+
+    if (state.tickMs < IN_MILLISECONDS)
+        return;
+
+    uint32 const ticks = state.tickMs / IN_MILLISECONDS;
+    state.tickMs %= IN_MILLISECONDS;
+
+    if (state.healthPerSecond && !healthFull)
+        player->ModifyHealth(int32(state.healthPerSecond * ticks));
+
+    if (state.manaPerSecond && !manaFull)
+        player->ModifyPower(POWER_MANA, int32(state.manaPerSecond * ticks));
+}
+
+void BetterGroup::OnPlayerLogout(Player* player)
+{
+    _postCombatRefreshStates.erase(player->GetGUID());
 }
 
 static bool WorldTableExists(std::string const& tableName)
@@ -943,6 +953,8 @@ void BetterGroup::OnAfterConfigLoad(bool reload)
     postCombatRefreshMinGroupSize = std::clamp(sConfigMgr->GetOption<uint32>("BetterGroup.PostCombatRefresh.MinGroupSize", 6), 1u, kMaxSupportedGroupSize);
     postCombatRefreshHealthPct = std::clamp(sConfigMgr->GetOption<float>("BetterGroup.PostCombatRefresh.HealthPct", 95.0f), 1.0f, 100.0f);
     postCombatRefreshManaPct = std::clamp(sConfigMgr->GetOption<float>("BetterGroup.PostCombatRefresh.ManaPct", 95.0f), 1.0f, 100.0f);
+    if (!postCombatRefreshEnabled)
+        _postCombatRefreshStates.clear();
 
     maxGroupSize = std::clamp(sConfigMgr->GetOption<uint32>("DynamicCreatureScaling.MaxGroupSize", 10), 1u, kMaxSupportedGroupSize);
 
@@ -1138,6 +1150,7 @@ bool BetterGroup::HandleBetterGroupCommand(ChatHandler* handler, char const* arg
         handler->PSendSysMessage("  Post-combat refresh thresholds: health<{:.1f}%, mana<{:.1f}%",
             std::clamp(sConfigMgr->GetOption<float>("BetterGroup.PostCombatRefresh.HealthPct", 95.0f), 1.0f, 100.0f),
             std::clamp(sConfigMgr->GetOption<float>("BetterGroup.PostCombatRefresh.ManaPct", 95.0f), 1.0f, 100.0f));
+        handler->PSendSysMessage("  Post-combat refresh active players: {}", _postCombatRefreshStates.size());
         handler->PSendSysMessage("  Random group loot enabled: {}", sConfigMgr->GetOption<bool>("BetterGroup.RandomLoot.Enable", false));
         handler->PSendSysMessage("  Random group loot min group size: {}", std::clamp(sConfigMgr->GetOption<uint32>("BetterGroup.RandomLoot.MinGroupSize", 6), 1u, kMaxSupportedGroupSize));
         handler->PSendSysMessage("  Random group loot pools: white={}, green={}, blue={}",
