@@ -173,3 +173,105 @@ GroupXPCompensation.DisableInRaid = 0
 #                    1 - Enabled (gray penalty is cancelled out)
 #
 GroupXPCompensation.CompensateGrayPenalty = 0
+
+########################################
+# Random Group Loot
+########################################
+#
+# Adds one optional bonus armor/weapon item directly to outdoor creature loot
+# when the kill was made by a nearby group of at least MinGroupSize players.
+# This is intended as a gearing path for 6-10 player outdoor raid groups.
+#
+# The item pool is built from existing item_template rows and filtered by:
+#   - armor or weapon item class only
+#   - white, green, or blue quality only
+#   - non-quest bonding
+#   - non-temporary items
+#   - required level near the killed creature's level
+#   - item IDs listed in mod_boxerbuddy_disabled_items, when that table exists
+#
+# This feature intentionally does NOT filter by player class, race, armor
+# proficiency, or weapon proficiency. It adds random group loot, not personal
+# smart loot.
+#
+########################################
+
+#   BetterGroup.RandomLoot.Enable
+#       Description: Enable random bonus group loot.
+#       Default:     0 - Disabled
+#                    1 - Enabled
+#
+BetterGroup.RandomLoot.Enable = 0
+
+#   BetterGroup.RandomLoot.MinGroupSize
+#       Description: Minimum nearby group size required before random group loot
+#       can roll. Values are clamped to 1-10.
+#       Default:     6
+#
+BetterGroup.RandomLoot.MinGroupSize = 6
+
+#   BetterGroup.RandomLoot.OutdoorOnly
+#       Description: Only add random group loot outside instanced content.
+#       Default:     1
+#
+BetterGroup.RandomLoot.OutdoorOnly = 1
+
+#   BetterGroup.RandomLoot.RareOnly
+#       Description: Only roll random group loot from rare or rare-elite mobs.
+#       Default:     0
+#
+BetterGroup.RandomLoot.RareOnly = 0
+
+#   BetterGroup.RandomLoot.RequiredLevelWindow
+#       Description: Item required level window around the killed creature's
+#       level. A value of 3 means a level 30 mob can drop required-level 27-33
+#       gear.
+#       Default:     3
+#
+BetterGroup.RandomLoot.RequiredLevelWindow = 3
+
+#   BetterGroup.RandomLoot.MinPlayerLevel
+#       Description: Loot recipient must be at least this level.
+#       Default:     1
+#
+BetterGroup.RandomLoot.MinPlayerLevel = 1
+
+#   BetterGroup.RandomLoot.WhiteMaxPlayerLevel
+#       Description: Players at or below this level roll white gear only.
+#       Above this level, blue is rolled first and green second.
+#       Default:     10
+#
+BetterGroup.RandomLoot.WhiteMaxPlayerLevel = 10
+
+#   BetterGroup.RandomLoot.BlueMinRequiredLevel
+#       Description: Minimum item required level for blue-quality bonus loot.
+#       Default:     1
+#
+BetterGroup.RandomLoot.BlueMinRequiredLevel = 1
+
+#   BetterGroup.RandomLoot.OnlyBindOnPickup
+#   BetterGroup.RandomLoot.OnlyBindOnEquip
+#   BetterGroup.RandomLoot.AllowBindOnUse
+#       Description: Optional binding filters. If either OnlyBind option is
+#       enabled, only matching items are eligible. Bind-on-use items are
+#       excluded unless AllowBindOnUse is enabled.
+#       Defaults:    0, 0, 0
+#
+BetterGroup.RandomLoot.OnlyBindOnPickup = 0
+BetterGroup.RandomLoot.OnlyBindOnEquip = 0
+BetterGroup.RandomLoot.AllowBindOnUse = 0
+
+#   BetterGroup.RandomLoot.Normal*ChancePct
+#       Description: Roll chances for non-elite outdoor mobs.
+#
+BetterGroup.RandomLoot.NormalWhiteChancePct = 10.0
+BetterGroup.RandomLoot.NormalGreenChancePct = 8.0
+BetterGroup.RandomLoot.NormalBlueChancePct = 1.0
+
+#   BetterGroup.RandomLoot.Elite*ChancePct
+#       Description: Roll chances for elite, rare, rare-elite, or world-boss
+#       ranked outdoor mobs.
+#
+BetterGroup.RandomLoot.EliteWhiteChancePct = 25.0
+BetterGroup.RandomLoot.EliteGreenChancePct = 35.0
+BetterGroup.RandomLoot.EliteBlueChancePct = 10.0

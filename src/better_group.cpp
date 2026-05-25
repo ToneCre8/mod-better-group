@@ -3,15 +3,23 @@
 #include "better_group.h"
 #include "Chat.h"
 #include "Config.h"
+#include "DatabaseEnv.h"
 #include "Formulas.h"
 #include "Group.h"
+#include "ItemTemplate.h"
 #include "KillRewarder.h"
+#include "LootMgr.h"
+#include "ObjectMgr.h"
+#include "Random.h"
 
 #include <algorithm>
 #include <cctype>
+#include <limits>
 #include <sstream>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
+#include <vector>
 
 //=================================================================================================================================================================================
 //=================================================================================================================================================================================
@@ -32,6 +40,35 @@ struct CreatureScalingState
 static std::unordered_map<ObjectGuid, CreatureScalingState> _scaledCreatures;
 
 constexpr uint32 kMaxSupportedGroupSize = 10;
+constexpr uint8 kDefaultRandomLootRequiredLevelWindow = 3;
+
+struct BetterGroupRandomLootConfig
+{
+    bool enabled = false;
+    bool outdoorOnly = true;
+    bool rareOnly = false;
+    bool onlyBindOnPickup = false;
+    bool onlyBindOnEquip = false;
+    bool allowBindOnUse = false;
+    uint32 minGroupSize = 6;
+    uint8 minPlayerLevel = 1;
+    uint8 whiteMaxPlayerLevel = 10;
+    uint8 blueMinRequiredLevel = 1;
+    uint8 requiredLevelWindow = kDefaultRandomLootRequiredLevelWindow;
+    float normalWhiteChancePct = 10.0f;
+    float normalGreenChancePct = 8.0f;
+    float normalBlueChancePct = 1.0f;
+    float eliteWhiteChancePct = 25.0f;
+    float eliteGreenChancePct = 35.0f;
+    float eliteBlueChancePct = 10.0f;
+};
+
+static BetterGroupRandomLootConfig _randomLootConfig;
+static bool _randomLootRuntimeReady = false;
+static std::unordered_set<uint32> _disabledRandomLootItemIds;
+static std::unordered_map<uint8, std::vector<uint32>> _whiteLootByRequiredLevel;
+static std::unordered_map<uint8, std::vector<uint32>> _greenLootByRequiredLevel;
+static std::unordered_map<uint8, std::vector<uint32>> _blueLootByRequiredLevel;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -231,6 +268,398 @@ void BetterGroup::OnPlayerRewardKillRewarder(Player* player, KillRewarder* rewar
     }
 }
 
+static bool WorldTableExists(std::string const& tableName)
+{
+    QueryResult result = WorldDatabase.Query("SHOW TABLES LIKE '{}'", tableName);
+    return result != nullptr;
+}
+
+static uint32 LoadDisabledItemIdsFromTable(std::string const& tableName)
+{
+    uint32 loaded = 0;
+
+    if (QueryResult result = WorldDatabase.Query("SELECT item FROM {}", tableName))
+    {
+        do
+        {
+            Field* fields = result->Fetch();
+            _disabledRandomLootItemIds.insert(fields[0].Get<uint32>());
+            ++loaded;
+        } while (result->NextRow());
+    }
+
+    return loaded;
+}
+
+static void LoadDisabledRandomLootItemIds()
+{
+    _disabledRandomLootItemIds.clear();
+
+    uint32 loaded = 0;
+    if (WorldTableExists("mod_boxerbuddy_disabled_items"))
+        loaded = LoadDisabledItemIdsFromTable("mod_boxerbuddy_disabled_items");
+
+    if (!loaded)
+        LOG_WARN("module", "BetterGroup random loot found no entries in mod_boxerbuddy_disabled_items.");
+
+    LOG_INFO("server.loading", ">> BetterGroup random loot loaded {} disabled item ids.", loaded);
+}
+
+static bool IsAllowedRandomLootBonding(ItemTemplate const* itemTemplate)
+{
+    if (!itemTemplate)
+        return false;
+
+    if (itemTemplate->Bonding == BIND_QUEST_ITEM || itemTemplate->Bonding == BIND_QUEST_ITEM1)
+        return false;
+
+    if (_randomLootConfig.onlyBindOnPickup || _randomLootConfig.onlyBindOnEquip)
+    {
+        if (_randomLootConfig.onlyBindOnPickup && itemTemplate->Bonding == BIND_WHEN_PICKED_UP)
+            return true;
+
+        if (_randomLootConfig.onlyBindOnEquip && itemTemplate->Bonding == BIND_WHEN_EQUIPPED)
+            return true;
+
+        return false;
+    }
+
+    if (itemTemplate->Bonding == BIND_WHEN_USE)
+        return _randomLootConfig.allowBindOnUse;
+
+    return true;
+}
+
+static bool IsSupportedRandomLootItem(ItemTemplate const* itemTemplate)
+{
+    if (!itemTemplate)
+        return false;
+
+    if (_disabledRandomLootItemIds.find(itemTemplate->ItemId) != _disabledRandomLootItemIds.end())
+        return false;
+
+    if (itemTemplate->Quality != ITEM_QUALITY_NORMAL &&
+        itemTemplate->Quality != ITEM_QUALITY_UNCOMMON &&
+        itemTemplate->Quality != ITEM_QUALITY_RARE)
+        return false;
+
+    if (itemTemplate->Class != ITEM_CLASS_WEAPON && itemTemplate->Class != ITEM_CLASS_ARMOR)
+        return false;
+
+    if (itemTemplate->RequiredLevel == 0)
+        return false;
+
+    if (itemTemplate->Duration > 0)
+        return false;
+
+    if (!IsAllowedRandomLootBonding(itemTemplate))
+        return false;
+
+    if (itemTemplate->Class == ITEM_CLASS_ARMOR)
+    {
+        if (itemTemplate->SubClass == ITEM_SUBCLASS_ARMOR_LIBRAM ||
+            itemTemplate->SubClass == ITEM_SUBCLASS_ARMOR_IDOL ||
+            itemTemplate->SubClass == ITEM_SUBCLASS_ARMOR_TOTEM ||
+            itemTemplate->SubClass == ITEM_SUBCLASS_ARMOR_SIGIL)
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+static uint32 CountPoolEntries(std::unordered_map<uint8, std::vector<uint32>> const& pool)
+{
+    uint32 count = 0;
+    for (auto const& [level, itemIds] : pool)
+    {
+        (void)level;
+        count += uint32(itemIds.size());
+    }
+
+    return count;
+}
+
+static void BuildRandomLootEntriesFromItemTemplates()
+{
+    _whiteLootByRequiredLevel.clear();
+    _greenLootByRequiredLevel.clear();
+    _blueLootByRequiredLevel.clear();
+
+    ItemTemplateContainer const* itemTemplateStore = sObjectMgr->GetItemTemplateStore();
+    if (!itemTemplateStore)
+    {
+        LOG_WARN("module", "BetterGroup random loot could not access the item template store.");
+        return;
+    }
+
+    uint32 whiteEntries = 0;
+    uint32 greenEntries = 0;
+    uint32 blueEntries = 0;
+    uint32 skippedEntries = 0;
+
+    for (ItemTemplateContainer::const_iterator itr = itemTemplateStore->begin(); itr != itemTemplateStore->end(); ++itr)
+    {
+        ItemTemplate const& itemTemplate = itr->second;
+        if (!IsSupportedRandomLootItem(&itemTemplate))
+        {
+            ++skippedEntries;
+            continue;
+        }
+
+        uint8 const requiredLevel = uint8(itemTemplate.RequiredLevel);
+        if (itemTemplate.Quality == ITEM_QUALITY_NORMAL)
+        {
+            _whiteLootByRequiredLevel[requiredLevel].push_back(itemTemplate.ItemId);
+            ++whiteEntries;
+        }
+        else if (itemTemplate.Quality == ITEM_QUALITY_UNCOMMON)
+        {
+            _greenLootByRequiredLevel[requiredLevel].push_back(itemTemplate.ItemId);
+            ++greenEntries;
+        }
+        else if (itemTemplate.Quality == ITEM_QUALITY_RARE)
+        {
+            if (itemTemplate.RequiredLevel < _randomLootConfig.blueMinRequiredLevel)
+            {
+                ++skippedEntries;
+                continue;
+            }
+
+            _blueLootByRequiredLevel[requiredLevel].push_back(itemTemplate.ItemId);
+            ++blueEntries;
+        }
+    }
+
+    LOG_INFO("server.loading",
+        ">> BetterGroup random loot template scan: whiteEntries={}, greenEntries={}, blueEntries={}, skippedEntries={}",
+        whiteEntries, greenEntries, blueEntries, skippedEntries);
+}
+
+static void ReloadRandomLootConfig(bool buildTemplatePool)
+{
+    _randomLootConfig.enabled = sConfigMgr->GetOption<bool>("BetterGroup.RandomLoot.Enable", false);
+    _randomLootConfig.outdoorOnly = sConfigMgr->GetOption<bool>("BetterGroup.RandomLoot.OutdoorOnly", true);
+    _randomLootConfig.rareOnly = sConfigMgr->GetOption<bool>("BetterGroup.RandomLoot.RareOnly", false);
+    _randomLootConfig.onlyBindOnPickup = sConfigMgr->GetOption<bool>("BetterGroup.RandomLoot.OnlyBindOnPickup", false);
+    _randomLootConfig.onlyBindOnEquip = sConfigMgr->GetOption<bool>("BetterGroup.RandomLoot.OnlyBindOnEquip", false);
+    _randomLootConfig.allowBindOnUse = sConfigMgr->GetOption<bool>("BetterGroup.RandomLoot.AllowBindOnUse", false);
+    _randomLootConfig.minGroupSize = std::clamp(sConfigMgr->GetOption<uint32>("BetterGroup.RandomLoot.MinGroupSize", 6), 1u, kMaxSupportedGroupSize);
+    _randomLootConfig.minPlayerLevel = uint8(std::clamp<uint32>(sConfigMgr->GetOption<uint32>("BetterGroup.RandomLoot.MinPlayerLevel", 1), 1u, uint32(std::numeric_limits<uint8>::max())));
+    _randomLootConfig.whiteMaxPlayerLevel = uint8(std::clamp<uint32>(sConfigMgr->GetOption<uint32>("BetterGroup.RandomLoot.WhiteMaxPlayerLevel", 10), 1u, uint32(std::numeric_limits<uint8>::max())));
+    _randomLootConfig.blueMinRequiredLevel = uint8(std::clamp<uint32>(sConfigMgr->GetOption<uint32>("BetterGroup.RandomLoot.BlueMinRequiredLevel", 1), 1u, uint32(std::numeric_limits<uint8>::max())));
+    _randomLootConfig.requiredLevelWindow = uint8(std::clamp<uint32>(sConfigMgr->GetOption<uint32>("BetterGroup.RandomLoot.RequiredLevelWindow", kDefaultRandomLootRequiredLevelWindow), 0u, 20u));
+    _randomLootConfig.normalWhiteChancePct = std::clamp(sConfigMgr->GetOption<float>("BetterGroup.RandomLoot.NormalWhiteChancePct", 10.0f), 0.0f, 100.0f);
+    _randomLootConfig.normalGreenChancePct = std::clamp(sConfigMgr->GetOption<float>("BetterGroup.RandomLoot.NormalGreenChancePct", 8.0f), 0.0f, 100.0f);
+    _randomLootConfig.normalBlueChancePct = std::clamp(sConfigMgr->GetOption<float>("BetterGroup.RandomLoot.NormalBlueChancePct", 1.0f), 0.0f, 100.0f);
+    _randomLootConfig.eliteWhiteChancePct = std::clamp(sConfigMgr->GetOption<float>("BetterGroup.RandomLoot.EliteWhiteChancePct", 25.0f), 0.0f, 100.0f);
+    _randomLootConfig.eliteGreenChancePct = std::clamp(sConfigMgr->GetOption<float>("BetterGroup.RandomLoot.EliteGreenChancePct", 35.0f), 0.0f, 100.0f);
+    _randomLootConfig.eliteBlueChancePct = std::clamp(sConfigMgr->GetOption<float>("BetterGroup.RandomLoot.EliteBlueChancePct", 10.0f), 0.0f, 100.0f);
+
+    if (!_randomLootConfig.enabled)
+    {
+        _disabledRandomLootItemIds.clear();
+        _whiteLootByRequiredLevel.clear();
+        _greenLootByRequiredLevel.clear();
+        _blueLootByRequiredLevel.clear();
+        LOG_INFO("server.loading", ">> BetterGroup random loot config: enabled=0");
+        return;
+    }
+
+    if (buildTemplatePool)
+    {
+        LoadDisabledRandomLootItemIds();
+        BuildRandomLootEntriesFromItemTemplates();
+    }
+    else
+    {
+        _disabledRandomLootItemIds.clear();
+        _whiteLootByRequiredLevel.clear();
+        _greenLootByRequiredLevel.clear();
+        _blueLootByRequiredLevel.clear();
+        LOG_INFO("server.loading", ">> BetterGroup random loot config loaded before runtime item templates are ready. Deferring item-template pool build until startup.");
+    }
+
+    LOG_INFO("server.loading",
+        ">> BetterGroup random loot config: enabled={}, minGroupSize={}, outdoorOnly={}, rareOnly={}, normalWhiteChancePct={}, normalGreenChancePct={}, normalBlueChancePct={}, eliteWhiteChancePct={}, eliteGreenChancePct={}, eliteBlueChancePct={}, whiteEntries={}, greenEntries={}, blueEntries={}",
+        _randomLootConfig.enabled ? 1 : 0,
+        _randomLootConfig.minGroupSize,
+        _randomLootConfig.outdoorOnly ? 1 : 0,
+        _randomLootConfig.rareOnly ? 1 : 0,
+        _randomLootConfig.normalWhiteChancePct,
+        _randomLootConfig.normalGreenChancePct,
+        _randomLootConfig.normalBlueChancePct,
+        _randomLootConfig.eliteWhiteChancePct,
+        _randomLootConfig.eliteGreenChancePct,
+        _randomLootConfig.eliteBlueChancePct,
+        CountPoolEntries(_whiteLootByRequiredLevel),
+        CountPoolEntries(_greenLootByRequiredLevel),
+        CountPoolEntries(_blueLootByRequiredLevel));
+}
+
+static bool IsRareCreature(Creature const* creature)
+{
+    if (!creature)
+        return false;
+
+    uint32 const rank = creature->GetCreatureTemplate()->rank;
+    return rank == CREATURE_ELITE_RARE || rank == CREATURE_ELITE_RAREELITE;
+}
+
+static bool IsRandomLootCreatureEligible(Creature const* creature)
+{
+    if (!creature)
+        return false;
+
+    if (_randomLootConfig.outdoorOnly && creature->GetMap()->Instanceable())
+        return false;
+
+    if (_randomLootConfig.rareOnly && !IsRareCreature(creature))
+        return false;
+
+    if (creature->IsPet() || creature->IsTotem() || creature->IsSummon())
+        return false;
+
+    if (creature->IsCritter() || creature->IsGuard() || creature->IsTrigger())
+        return false;
+
+    return true;
+}
+
+static std::vector<uint32> GatherCandidateItemIds(std::unordered_map<uint8, std::vector<uint32>> const& pool, Creature const* creature)
+{
+    std::vector<uint32> candidates;
+    if (!creature)
+        return candidates;
+
+    uint8 const creatureLevel = creature->GetLevel();
+    uint8 const minLevel = creatureLevel > _randomLootConfig.requiredLevelWindow ? creatureLevel - _randomLootConfig.requiredLevelWindow : 1;
+    uint8 const maxLevel = std::min<uint32>(creatureLevel + _randomLootConfig.requiredLevelWindow, std::numeric_limits<uint8>::max());
+
+    for (uint32 level = minLevel; level <= maxLevel; ++level)
+    {
+        auto itr = pool.find(uint8(level));
+        if (itr == pool.end())
+            continue;
+
+        candidates.insert(candidates.end(), itr->second.begin(), itr->second.end());
+    }
+
+    return candidates;
+}
+
+static uint32 ChooseRandomLootItemIdFromPool(std::unordered_map<uint8, std::vector<uint32>> const& pool, Creature const* creature)
+{
+    std::vector<uint32> candidates = GatherCandidateItemIds(pool, creature);
+    if (candidates.empty())
+        return 0;
+
+    uint32 const startIndex = urand(0, uint32(candidates.size() - 1));
+    for (uint32 offset = 0; offset < candidates.size(); ++offset)
+    {
+        uint32 const itemId = candidates[(startIndex + offset) % candidates.size()];
+        if (sObjectMgr->GetItemTemplate(itemId))
+            return itemId;
+    }
+
+    return 0;
+}
+
+static uint32 CountNearbyLootGroupMembers(Creature const* creature, Player* lootOwner, float radius)
+{
+    if (!creature || !lootOwner)
+        return 0;
+
+    return CountNearbyGroupMembers(creature, lootOwner, radius);
+}
+
+static void TryAddRandomGroupLoot(Creature* creature, float detectionRadius)
+{
+    if (!_randomLootRuntimeReady && _randomLootConfig.enabled)
+    {
+        LOG_INFO("module", "BetterGroup random loot detected runtime pools before startup. Retrying item-template pool build.");
+        _randomLootRuntimeReady = true;
+        LoadDisabledRandomLootItemIds();
+        BuildRandomLootEntriesFromItemTemplates();
+    }
+
+    if (!_randomLootConfig.enabled || !creature)
+        return;
+
+    if (!IsRandomLootCreatureEligible(creature))
+        return;
+
+    Player* lootOwner = creature->GetLootRecipient();
+    if (!lootOwner)
+        return;
+
+    if (lootOwner->GetLevel() < _randomLootConfig.minPlayerLevel)
+        return;
+
+    uint32 groupSize = 1;
+    if (auto itr = _scaledCreatures.find(creature->GetGUID()); itr != _scaledCreatures.end())
+        groupSize = itr->second.nearbyGroupSize;
+    else
+        groupSize = CountNearbyLootGroupMembers(creature, lootOwner, detectionRadius);
+
+    if (groupSize < _randomLootConfig.minGroupSize)
+        return;
+
+    bool const isEliteOrRare = creature->isElite() || IsRareCreature(creature);
+    float const whiteChance = isEliteOrRare ? _randomLootConfig.eliteWhiteChancePct : _randomLootConfig.normalWhiteChancePct;
+    float const greenChance = isEliteOrRare ? _randomLootConfig.eliteGreenChancePct : _randomLootConfig.normalGreenChancePct;
+    float const blueChance = isEliteOrRare ? _randomLootConfig.eliteBlueChancePct : _randomLootConfig.normalBlueChancePct;
+
+    uint32 itemId = 0;
+    bool const isWhiteOnlyPlayer = lootOwner->GetLevel() <= _randomLootConfig.whiteMaxPlayerLevel;
+
+    if (isWhiteOnlyPlayer && roll_chance_f(whiteChance))
+        itemId = ChooseRandomLootItemIdFromPool(_whiteLootByRequiredLevel, creature);
+    else if (!isWhiteOnlyPlayer)
+    {
+        if (roll_chance_f(blueChance))
+            itemId = ChooseRandomLootItemIdFromPool(_blueLootByRequiredLevel, creature);
+
+        if (!itemId && roll_chance_f(greenChance))
+            itemId = ChooseRandomLootItemIdFromPool(_greenLootByRequiredLevel, creature);
+    }
+
+    if (!itemId)
+        return;
+
+    Loot& loot = creature->loot;
+    bool const hadLoot = !loot.empty();
+    size_t const itemCountBefore = loot.items.size();
+
+    if (loot.lootOwnerGUID.IsEmpty())
+        loot.lootOwnerGUID = lootOwner->GetGUID();
+
+    LootStoreItem bonusItem(itemId, 0, 100.0f, false, creature->GetLootMode(), 0, 1, 1);
+    loot.AddItem(bonusItem);
+
+    if (loot.items.size() == itemCountBefore)
+        return;
+
+    if (ItemTemplate const* itemTemplate = sObjectMgr->GetItemTemplate(itemId))
+    {
+        if (Group* group = creature->GetLootRecipientGroup())
+        {
+            LootItem& addedItem = loot.items.back();
+            if (itemTemplate->Quality < uint32(group->GetLootThreshold()))
+                addedItem.is_underthreshold = true;
+
+            if (!hadLoot && !loot.empty())
+                group->UpdateLooterGuid(creature);
+        }
+
+        LOG_INFO("module",
+            "BetterGroup random loot added item {} ('{}', quality={}) to creature '{}' (entry={}, guid={}) for group size {}.",
+            itemId, itemTemplate->Name1, itemTemplate->Quality, creature->GetName(), creature->GetEntry(),
+            creature->GetGUID().ToString(), groupSize);
+    }
+}
+
 void BetterGroup::OnAfterConfigLoad(bool reload)
 {
     enabled = sConfigMgr->GetOption<bool>("BetterGroup.Enable", false);
@@ -251,12 +680,23 @@ void BetterGroup::OnAfterConfigLoad(bool reload)
         hpScale[i] = sConfigMgr->GetOption<float>("DynamicCreatureScaling.HPScale." + suffix, i > 1 ? hpScale[i - 1] : 1.0f);
         dmgScale[i] = sConfigMgr->GetOption<float>("DynamicCreatureScaling.DmgScale." + suffix, i > 1 ? dmgScale[i - 1] : 1.0f);
     }
+
+    ReloadRandomLootConfig(_randomLootRuntimeReady && reload);
+}
+
+void BetterGroup::OnStartup()
+{
+    _randomLootRuntimeReady = true;
+    ReloadRandomLootConfig(true);
 }
 
 void BetterGroup::OnUnitDeath(Unit* unit, Unit* killer)
 {
     if (Creature* creature = unit->ToCreature())
+    {
+        TryAddRandomGroupLoot(creature, detectionRadius);
         _scaledCreatures.erase(creature->GetGUID());
+    }
 }
 
 // ─── HP scale / restore ───────────────────────────────────────────────────────
@@ -421,6 +861,12 @@ bool BetterGroup::HandleBetterGroupCommand(ChatHandler* handler, char const* arg
         handler->PSendSysMessage("  XP max rate: {:.2f}", std::max(sConfigMgr->GetOption<float>("GroupXPCompensation.MaxRate", 1.0f), 0.0f));
         handler->PSendSysMessage("  XP disabled in raids: {}", sConfigMgr->GetOption<bool>("GroupXPCompensation.DisableInRaid", false));
         handler->PSendSysMessage("  Gray penalty compensation: {}", sConfigMgr->GetOption<bool>("GroupXPCompensation.CompensateGrayPenalty", false));
+        handler->PSendSysMessage("  Random group loot enabled: {}", sConfigMgr->GetOption<bool>("BetterGroup.RandomLoot.Enable", false));
+        handler->PSendSysMessage("  Random group loot min group size: {}", std::clamp(sConfigMgr->GetOption<uint32>("BetterGroup.RandomLoot.MinGroupSize", 6), 1u, kMaxSupportedGroupSize));
+        handler->PSendSysMessage("  Random group loot pools: white={}, green={}, blue={}",
+            CountPoolEntries(_whiteLootByRequiredLevel),
+            CountPoolEntries(_greenLootByRequiredLevel),
+            CountPoolEntries(_blueLootByRequiredLevel));
         handler->PSendSysMessage("  Creatures currently tracked as scaled: {}", _scaledCreatures.size());
         return true;
     }

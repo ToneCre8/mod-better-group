@@ -21,6 +21,7 @@ public:
 
     //WorldScript
     void OnAfterConfigLoad(bool reload) override;
+    void OnStartup() override;
 
     //UnitScript
     void OnUnitDeath(Unit* unit, Unit* /*killer*/) override;
