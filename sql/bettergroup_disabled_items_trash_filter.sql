@@ -1,4 +1,4 @@
-INSERT IGNORE INTO `mod_boxerbuddy_disabled_items` (`item`)
+INSERT IGNORE INTO `mod_bettergroup_disabled_items` (`item`)
 SELECT `entry`
 FROM `item_template`
 WHERE (

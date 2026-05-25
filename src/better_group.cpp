@@ -296,11 +296,13 @@ static void LoadDisabledRandomLootItemIds()
     _disabledRandomLootItemIds.clear();
 
     uint32 loaded = 0;
-    if (WorldTableExists("mod_boxerbuddy_disabled_items"))
+    if (WorldTableExists("mod_bettergroup_disabled_items"))
+        loaded = LoadDisabledItemIdsFromTable("mod_bettergroup_disabled_items");
+    else if (WorldTableExists("mod_boxerbuddy_disabled_items"))
         loaded = LoadDisabledItemIdsFromTable("mod_boxerbuddy_disabled_items");
 
     if (!loaded)
-        LOG_WARN("module", "BetterGroup random loot found no entries in mod_boxerbuddy_disabled_items.");
+        LOG_WARN("module", "BetterGroup random loot found no entries in mod_bettergroup_disabled_items.");
 
     LOG_INFO("server.loading", ">> BetterGroup random loot loaded {} disabled item ids.", loaded);
 }

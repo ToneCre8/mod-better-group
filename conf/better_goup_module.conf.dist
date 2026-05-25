@@ -188,7 +188,7 @@ GroupXPCompensation.CompensateGrayPenalty = 0
 #   - non-quest bonding
 #   - non-temporary items
 #   - required level near the killed creature's level
-#   - item IDs listed in mod_boxerbuddy_disabled_items, when that table exists
+#   - item IDs listed in mod_bettergroup_disabled_items, when that table exists
 #
 # This feature intentionally does NOT filter by player class, race, armor
 # proficiency, or weapon proficiency. It adds random group loot, not personal
