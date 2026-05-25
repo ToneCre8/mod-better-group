@@ -199,7 +199,7 @@ static uint32 CountNearbyGroupMembers(Creature const* creature, Player* attacker
     return std::max(count, 1u);
 }
 
-static uint32 CountNearbyPlayerGroupMembers(Player const* player, float radius)
+static uint32 CountNearbyPlayerGroupMembers(Player* player, float radius)
 {
     Group* group = player->GetGroup();
     if (!group)
