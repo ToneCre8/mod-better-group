@@ -21,6 +21,7 @@ public:
     void OnPlayerLeaveCombat(Player* player) override;
     void OnPlayerUpdate(Player* player, uint32 p_time) override;
     void OnPlayerLogout(Player* player) override;
+    void OnPlayerLevelChanged(Player* player, uint8 oldLevel) override;
 
     //WorldScript
     void OnAfterConfigLoad(bool reload) override;
@@ -57,6 +58,10 @@ private:
     uint32  postCombatRefreshMinGroupSize = 6;
     float   postCombatRefreshHealthPct = 95.0f;
     float   postCombatRefreshManaPct = 95.0f;
+    bool    levelUpSatchelEnabled = true;
+    bool    levelUpSatchelRequireGroup = true;
+    uint8   levelUpSatchelMinLevel = 15;
+    uint8   levelUpSatchelMaxLevel = 79;
     float   hpScale[11] = { 0.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f };
     float   dmgScale[11] = { 0.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f };
 };

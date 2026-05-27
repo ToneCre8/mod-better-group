@@ -49,6 +49,23 @@ struct LevelRefreshRate
     uint32 manaPerSecond;
 };
 
+struct LevelSatchel
+{
+    uint8 maxLevel;
+    uint32 itemId;
+};
+
+static constexpr LevelSatchel kHelpfulGoodsSatchels[] =
+{
+    { 25, 51999 },
+    { 34, 52000 },
+    { 45, 52001 },
+    { 55, 52002 },
+    { 60, 52003 },
+    { 64, 52004 },
+    { 70, 52005 }
+};
+
 static constexpr LevelRefreshRate kPostCombatRefreshRates[] =
 {
     { 1, 4, 8 },       // Conjured Muffin / Water
@@ -225,6 +242,15 @@ static LevelRefreshRate SelectPostCombatRefreshRate(uint8 level)
     }
 
     return selectedRate;
+}
+
+static uint32 SelectHelpfulGoodsSatchel(uint8 level)
+{
+    for (LevelSatchel const& satchel : kHelpfulGoodsSatchels)
+        if (level <= satchel.maxLevel)
+            return satchel.itemId;
+
+    return kHelpfulGoodsSatchels[(sizeof(kHelpfulGoodsSatchels) / sizeof(kHelpfulGoodsSatchels[0])) - 1].itemId;
 }
 
 static float GetHealthPct(Player const* player)
@@ -432,6 +458,44 @@ void BetterGroup::OnPlayerUpdate(Player* player, uint32 p_time)
 void BetterGroup::OnPlayerLogout(Player* player)
 {
     _postCombatRefreshStates.erase(player->GetGUID());
+}
+
+void BetterGroup::OnPlayerLevelChanged(Player* player, uint8 oldLevel)
+{
+    if (!enabled || !levelUpSatchelEnabled || !player)
+        return;
+
+    uint8 const newLevel = player->GetLevel();
+    if (newLevel <= oldLevel || newLevel < levelUpSatchelMinLevel)
+        return;
+
+    if (levelUpSatchelRequireGroup && !player->GetGroup())
+        return;
+
+    if (levelUpSatchelMaxLevel && newLevel > levelUpSatchelMaxLevel)
+        return;
+
+    uint32 const satchelItemId = SelectHelpfulGoodsSatchel(newLevel);
+    ItemTemplate const* itemTemplate = sObjectMgr->GetItemTemplate(satchelItemId);
+    if (!itemTemplate)
+    {
+        LOG_ERROR("module", "BetterGroup level-up satchel item {} does not exist.", satchelItemId);
+        return;
+    }
+
+    ItemPosCountVec dest;
+    if (player->CanStoreNewItem(NULL_BAG, NULL_SLOT, dest, satchelItemId, 1) == EQUIP_ERR_OK)
+    {
+        Item* item = player->StoreNewItem(dest, satchelItemId, true);
+        if (item)
+            player->SendNewItem(item, 1, true, false, false, false);
+    }
+    else
+    {
+        player->SendItemRetrievalMail(satchelItemId, 1);
+    }
+
+    LOG_INFO("module", "BetterGroup awarded level-up satchel {} to player {} at level {}.", satchelItemId, player->GetGUID().ToString(), newLevel);
 }
 
 static bool WorldTableExists(std::string const& tableName)
@@ -955,6 +1019,10 @@ void BetterGroup::OnAfterConfigLoad(bool reload)
     postCombatRefreshManaPct = std::clamp(sConfigMgr->GetOption<float>("BetterGroup.PostCombatRefresh.ManaPct", 95.0f), 1.0f, 100.0f);
     if (!postCombatRefreshEnabled)
         _postCombatRefreshStates.clear();
+    levelUpSatchelEnabled = sConfigMgr->GetOption<bool>("BetterGroup.LevelUpSatchel.Enable", true);
+    levelUpSatchelRequireGroup = sConfigMgr->GetOption<bool>("BetterGroup.LevelUpSatchel.RequireGroup", true);
+    levelUpSatchelMinLevel = uint8(std::clamp<uint32>(sConfigMgr->GetOption<uint32>("BetterGroup.LevelUpSatchel.MinLevel", 15), 1u, uint32(std::numeric_limits<uint8>::max())));
+    levelUpSatchelMaxLevel = uint8(std::clamp<uint32>(sConfigMgr->GetOption<uint32>("BetterGroup.LevelUpSatchel.MaxLevel", 79), 0u, uint32(std::numeric_limits<uint8>::max())));
 
     maxGroupSize = std::clamp(sConfigMgr->GetOption<uint32>("DynamicCreatureScaling.MaxGroupSize", 10), 1u, kMaxSupportedGroupSize);
 
@@ -1151,6 +1219,11 @@ bool BetterGroup::HandleBetterGroupCommand(ChatHandler* handler, char const* arg
             std::clamp(sConfigMgr->GetOption<float>("BetterGroup.PostCombatRefresh.HealthPct", 95.0f), 1.0f, 100.0f),
             std::clamp(sConfigMgr->GetOption<float>("BetterGroup.PostCombatRefresh.ManaPct", 95.0f), 1.0f, 100.0f));
         handler->PSendSysMessage("  Post-combat refresh active players: {}", _postCombatRefreshStates.size());
+        handler->PSendSysMessage("  Level-up satchel enabled: {}", sConfigMgr->GetOption<bool>("BetterGroup.LevelUpSatchel.Enable", true));
+        handler->PSendSysMessage("  Level-up satchel requires group: {}", sConfigMgr->GetOption<bool>("BetterGroup.LevelUpSatchel.RequireGroup", true));
+        handler->PSendSysMessage("  Level-up satchel levels: {}-{}",
+            std::clamp<uint32>(sConfigMgr->GetOption<uint32>("BetterGroup.LevelUpSatchel.MinLevel", 15), 1u, uint32(std::numeric_limits<uint8>::max())),
+            std::clamp<uint32>(sConfigMgr->GetOption<uint32>("BetterGroup.LevelUpSatchel.MaxLevel", 79), 0u, uint32(std::numeric_limits<uint8>::max())));
         handler->PSendSysMessage("  Random group loot enabled: {}", sConfigMgr->GetOption<bool>("BetterGroup.RandomLoot.Enable", false));
         handler->PSendSysMessage("  Random group loot min group size: {}", std::clamp(sConfigMgr->GetOption<uint32>("BetterGroup.RandomLoot.MinGroupSize", 6), 1u, kMaxSupportedGroupSize));
         handler->PSendSysMessage("  Random group loot pools: white={}, green={}, blue={}",

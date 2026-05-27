@@ -223,6 +223,54 @@ BetterGroup.PostCombatRefresh.HealthPct = 95.0
 BetterGroup.PostCombatRefresh.ManaPct = 95.0
 
 ########################################
+# Level-Up Satchel
+########################################
+#
+# Awards one level-appropriate Satchel of Helpful Goods when a grouped player
+# gains a level. The item goes to inventory when possible and is sent by item
+# retrieval mail if bags are full.
+#
+# Satchel tiers use the same item IDs as LFG rewards:
+#   15-25: 51999
+#   26-34: 52000
+#   35-45: 52001
+#   46-55: 52002
+#   56-60: 52003
+#   61-64: 52004
+#   65-79: 52005
+#
+########################################
+
+#   BetterGroup.LevelUpSatchel.Enable
+#       Description: Enable satchel awards on level-up.
+#       Default:     1 - Enabled
+#                    0 - Disabled
+#
+BetterGroup.LevelUpSatchel.Enable = 1
+
+#   BetterGroup.LevelUpSatchel.RequireGroup
+#       Description: Only award level-up satchels to players who are currently
+#       in a party or raid group.
+#       Default:     1 - Require party/raid group
+#                    0 - Also award while solo
+#
+BetterGroup.LevelUpSatchel.RequireGroup = 1
+
+#   BetterGroup.LevelUpSatchel.MinLevel
+#       Description: First level that awards a level-up satchel.
+#       Default:     15
+#
+BetterGroup.LevelUpSatchel.MinLevel = 15
+
+#   BetterGroup.LevelUpSatchel.MaxLevel
+#       Description: Last level that awards a level-up satchel.
+#       Set to 0 for no upper level limit. Levels above 70 continue using the
+#       highest Satchel of Helpful Goods tier.
+#       Default:     79
+#
+BetterGroup.LevelUpSatchel.MaxLevel = 79
+
+########################################
 # Random Group Loot
 ########################################
 #

@@ -5,6 +5,7 @@
 - scaling normal outdoor creatures when multiple nearby group members engage them
 - reducing or removing the normal group XP penalty so grouped players can still level efficiently together
 - optionally restoring health/mana after combat for large outdoor groups using mage food/water-style level tiers
+- optionally awarding grouped players a Satchel of Helpful Goods on level-up beginning at level 15
 - adding optional level-appropriate random armor/weapon loot for 6-10 player outdoor groups
 
 It is especially useful on servers that encourage duo or party leveling, including playerbot-heavy environments where groups may be larger than a typical solo questing setup.
@@ -46,6 +47,10 @@ You can also choose whether raid groups are excluded and whether gray-level mism
 ### Post-combat refresh
 
 The optional post-combat refresh feature restores health and/or mana directly for up to 30 seconds after a player leaves combat, gated by nearby group size and health/mana thresholds. The rates are tuned around mage conjured food/water tiers, but no food or drink aura is applied, so players do not need to sit.
+
+### Level-up satchels
+
+The optional level-up satchel feature awards one level-appropriate Satchel of Helpful Goods when a grouped player gains a level. By default it requires a party or raid, starts at level 15, and stops at level 79, using the highest low-level LFG satchel tier above level 70. If bags are full, the satchel is sent through item retrieval mail.
 
 ### Random group loot
 
@@ -99,6 +104,10 @@ The main switches are:
 | `BetterGroup.PostCombatRefresh.MinGroupSize` | Nearby group size required for post-combat refresh | `6` |
 | `BetterGroup.PostCombatRefresh.HealthPct` | Health threshold for direct refresh | `95.0` |
 | `BetterGroup.PostCombatRefresh.ManaPct` | Mana threshold for direct refresh | `95.0` |
+| `BetterGroup.LevelUpSatchel.Enable` | Enables Satchel of Helpful Goods awards on level-up | `1` |
+| `BetterGroup.LevelUpSatchel.RequireGroup` | Requires the player to be in a party or raid | `1` |
+| `BetterGroup.LevelUpSatchel.MinLevel` | First level that awards a satchel | `15` |
+| `BetterGroup.LevelUpSatchel.MaxLevel` | Last level that awards a satchel, or `0` for no cap | `79` |
 | `BetterGroup.RandomLoot.Enable` | Enables random bonus group loot | `0` |
 | `BetterGroup.RandomLoot.MinGroupSize` | Nearby group size required for bonus loot rolls | `6` |
 | `BetterGroup.RandomLoot.RequiredLevelWindow` | Item required-level range around the creature level | `3` |
